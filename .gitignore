@@ -1,0 +1,26 @@
+# Python / Virtual Environment
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.egg-info/
+.build/
+dist/
+
+# Project Data & Logs (tránh push dữ liệu sinh học nặng)
+data/raw/genomes/*
+data/raw/metadata/*
+data/raw/zip_archives/*
+data/interim/*
+data/processed/*
+logs/*
+
+# Ngoại lệ: Giữ lại các file .gitkeep để không mất cấu trúc thư mục
+!data/**/.gitkeep
+!logs/.gitkeep
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
