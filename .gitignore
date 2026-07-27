@@ -14,6 +14,8 @@ data/interim/*
 data/processed/*
 logs/*
 
+PHASE_0.md
+
 !data/**/.gitkeep
 !logs/.gitkeep
 
