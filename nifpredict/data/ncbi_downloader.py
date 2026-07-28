@@ -82,8 +82,9 @@ class NCBIDownloader:
             return output_zip_path
 
         url = f"{self.base_url}/genome/accession/{accession}/download"
+        # Định dạng truyền tham số list để requests encode đúng Query String cho NCBI API
         params = {
-            "include_annotation_type": "GENOME_FASTA,PROT_FASTA",
+            "include_annotation_type": ["GENOME_FASTA", "PROT_FASTA", "GENOME_GFF"],
             "filename": f"{accession}.zip"
         }
 
@@ -110,7 +111,7 @@ class NCBIDownloader:
 class NCBIExtractor:
     """Layer 3: Extractor - Giải nén động và trích xuất Metadata chuẩn."""
 
-    def __init__(self, raw_genomes_dir: Path, raw_metadata_dir: Path, logger=None) -> None:
+    def __init__(self, raw_genomes_dir: Path | str, raw_metadata_dir: Path | str, logger=None) -> None:
         self.raw_genomes_dir = Path(raw_genomes_dir)
         self.raw_metadata_dir = Path(raw_metadata_dir)
         self.logger = logger or setup_logger("nifpredict.data.extractor")
@@ -118,8 +119,8 @@ class NCBIExtractor:
         self.raw_metadata_dir.mkdir(parents=True, exist_ok=True)
 
     def extract_package(self, zip_path: Path, accession: str) -> Optional[GenomeMetadata]:
-        """Duyệt động archive zip, trích xuất .fna, .faa và parse JSONL thành GenomeMetadata."""
-        if not zip_path or not zip_path.exists():
+        """Duyệt động archive zip, trích xuất .fna, .faa, .gff và parse JSONL thành GenomeMetadata."""
+        if not zip_path or not Path(zip_path).exists():
             self.logger.error(f"Tệp tin ZIP không hợp lệ: {zip_path}")
             return None
 
@@ -143,7 +144,14 @@ class NCBIExtractor:
                             dst.write(src.read())
                         self.logger.info(f"Đã giải nén Protein FASTA: {target.name}")
 
-                    # 3. Trích xuất & Parse Metadata JSONL
+                    # 3. Trích xuất GFF / GFF3 Annotation
+                    elif filename.endswith((".gff", ".gff3")):
+                        target = self.raw_genomes_dir / f"{accession}_genomic.gff"
+                        with zf.open(member) as src, open(target, "wb") as dst:
+                            dst.write(src.read())
+                        self.logger.info(f"Đã giải nén GFF: {target.name}")
+
+                    # 4. Trích xuất & Parse Metadata JSONL
                     elif filename == "assembly_data_report.jsonl":
                         target = self.raw_metadata_dir / f"{accession}_assembly_report.jsonl"
                         raw_bytes = zf.read(member)
@@ -165,7 +173,21 @@ class NCBIExtractor:
                         )
                         self.logger.info(f"Đã ghi nhận metadata cho: {metadata.organism_name}")
 
+            # Nếu không tìm thấy assembly report JSONL vẫn trả về metadata mặc định thành công
+            if not metadata:
+                metadata = GenomeMetadata(
+                    accession=accession,
+                    organism_name="Unknown",
+                    tax_id=0,
+                    assembly_level="Unknown",
+                    download_status="SUCCESS"
+                )
+
             return metadata
         except (zipfile.BadZipFile, json.JSONDecodeError, IndexError) as e:
             self.logger.error(f"Lỗi giải nén hoặc parse metadata cho {accession}: {e}")
             return None
+
+    # Alias method để giữ tương thích ngược nếu nơi khác gọi extract_genome_files
+    def extract_genome_files(self, zip_path: Path, accession: str):
+        return self.extract_package(zip_path, accession)

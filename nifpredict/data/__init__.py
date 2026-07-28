@@ -1,3 +1,8 @@
-from .ncbi_downloader import NCBIDownloader, NCBIExtractor, NCBIResolver, GenomeMetadata
+from .ncbi_downloader import (
+    GenomeMetadata,
+    NCBIResolver,
+    NCBIDownloader,
+    NCBIExtractor
+)
 
-__all__ = ["NCBIDownloader", "NCBIExtractor", "NCBIResolver", "GenomeMetadata"]
+__all__ = ["GenomeMetadata", "NCBIResolver", "NCBIDownloader", "NCBIExtractor"]
