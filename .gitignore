@@ -10,9 +10,22 @@ dist/
 data/raw/genomes/*
 data/raw/metadata/*
 data/raw/zip_archives/*
+data/raw_genomes/
+data/raw_metadata/
 data/interim/*
 data/processed/*
+data/hmm_profiles/Pfam-A*
+*.h3*
+*.zip
+*.faa
+*.fna
+*.gff
+*.gff3
+*.tbl
+
 logs/*
+results/
+annotation/
 
 PHASE_0.md
 
@@ -22,3 +35,5 @@ PHASE_0.md
 .vscode/
 .idea/
 .DS_Store
+
+.env

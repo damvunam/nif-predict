@@ -1,28 +1,21 @@
 project:
   name: "NifPredict"
   version: "0.1.0"
-  random_seed: 42
+  description: "Nền tảng sinh học tính toán dự đoán khả năng cố định đạm"
 
 paths:
-  data_dir: "data"
-  raw_data_dir: "data/raw"
+  raw_zip_dir: "data/raw/zip_archives"
   raw_genomes_dir: "data/raw/genomes"
   raw_metadata_dir: "data/raw/metadata"
-  raw_zip_dir: "data/raw/zip_archives"
-  interim_data_dir: "data/interim"
-  processed_data_dir: "data/processed"
-  models_dir: "models"
-  logs_dir: "logs"
-  hmm_profiles_dir: "data/hmm_profiles"
+  annotation_dir: "data/interim/annotations"
+  processed_dir: "data/processed"
+  log_dir: "logs"
 
 ncbi:
   api_base_url: "https://api.ncbi.nlm.nih.gov/datasets/v2alpha"
   timeout_seconds: 60
   max_retries: 3
 
-annotation:
-  min_protein_length: 30
-  hmm_evalue_cutoff: 1e-10
-
 logging:
   level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
