@@ -1,21 +1,89 @@
+# 1. Project Metadata
 project:
   name: "NifPredict"
   version: "0.1.0"
-  description: "Nền tảng sinh học tính toán dự đoán khả năng cố định đạm"
+  environment: "production"     # options: development, testing, production
+  description: "A computational biology platform that predicts nitrogen fixation capability from gene and protein sequence data."
 
+# 2. computing resources management
+computing:
+  max_threads: 16     # number of CPU cores for hmmer/prodigal/ML
+  chunk_size: 100     # kich thuoc lo cho xu ly song song
+  enable_gpu: false   # set true if using deep learning models
+
+# 3. path management
 paths:
-  raw_zip_dir: "data/raw/zip_archives"
-  raw_genomes_dir: "data/raw/genomes"
-  raw_metadata_dir: "data/raw/metadata"
-  annotation_dir: "data/interim/annotations"
-  processed_dir: "data/processed"
+  base_dir: "."
+  raw:
+    zip_dir: "data/raw/zip_archives"
+    genomes_dir: "data/raw/genomes"
+    metadata_dir: "data/raw/metadata"
+  interim:
+    annotation_dir: "data/interim/annotations"
+    hmmr_dir: "data/interim/hmm_outputs"
+  processed:
+    features_dir: "data/processed/features"
+    predictions_dir: "data/processed/predictions"
+  databases:
+    hmm_profiles: "data/databases/nif_hmm_profiles"
+    refseq_mapping: "data/databases/refseq_map"
+  models: "models"      # saved model checkpoints, scalers, and encoders
   log_dir: "logs"
 
+# 4. ncbi datasets API configuration (stable v2)
 ncbi:
-  api_base_url: "https://api.ncbi.nlm.nih.gov/datasets/v2alpha"
+  api_base_url: "https://api.ncbi.nlm.nih.gov/datasets/v2"
+  api_key_env_var: "NCBI_API_KEY"  # read from environment variable
   timeout_seconds: 60
-  max_retries: 3
+  max_retries: 5
+  rate_limit_per_sec: 10      # tu dong giam thanh 3req/s neu thieu API key
 
+# 5. Biological & Alignment Thresholds (HMMER / BLAST / Synteny)
+biological_thresholds:
+  alignment:
+    use_trusted_cutoffs: true
+    e_value_max: 1.0e-10           # max e-value cutoff
+    min_coverage: 0.7                  # min coverage of HMM profile
+    min_identity: 0.35                 # min 35% amino acididentity
+    min_bit_score: 80.0                # min bit score for HMMER hits
+
+  synteny:
+    max_intergenic_distance_bp: 5000  # max distance between genes in a cluster
+    min_core_genes_required: 2                # min number of core genes to consider a valid cluster
+    strand_sensitive: false           # true neu cac gen trong cum nam tren cung 1 soi
+  
+  gene_systems:
+    nif: # Mo-dependent nitrogenase (Primary system)
+      core_genes: ["nifH", "nifD", "nifK"]
+      accessory_genes: ["nifB", "nifE", "nifN", "nifS", "nifU", "nifV", "nifW", "nifZ"]
+    vnf: # V-dependent alternative nitrogenase
+      core_genes: ["vnfH", "vnfD", "vnfK", "vnfG"]
+      accessory_genes: ["vnfEN", "vnfA"]
+    anf: # Fe-only alternative nitrogenase
+      core_genes: ["anfH", "anfD", "anfK", "anfG"]
+      accessory_genes: ["anfA"]
+    fix: # Electron transfer & regulatory system
+      core_genes: ["fixA", "fixB", "fixC", "fixX"]
+      accessory_genes: ["fixL", "fixJ", "fixK"]
+
+# 6. ML
+machine_learning:
+  random_seed: 42
+
+  split_strategy:
+    train_ratio: 0.7
+    validation_ratio: 0.15
+    test_ratio: 0.15
+    split_by_taxon: true 
+    taxonomy_level: "family"  # options: species, genus, family, order, class, phylum
+  
+  model_training:
+    cv_folds: 5
+    imbalance_handling: "ClassWeight"  # options: None, ClassWeight, SMOTE
+    evaluation_metrics: "f1_macro"     # handles cac nhom co dinh dam khong can bang
+
+# 7. logging configuration
 logging:
   level: "INFO"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_path: "logs/nifpredict.log"
