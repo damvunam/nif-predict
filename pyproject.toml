@@ -1,26 +1,113 @@
+# 1. Build system configuration (PEP 517 / PEP 518)
+# khai bao cong cu de dong goi project thanh wheel/tar.gz
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["setuptools>=61.0", "wheel"]    # yeu cau setuptools ho tro pep 621 va wheel
+build-backend = "setuptools.build_meta"     # backend chiu trach nhiem biuld packages
 
+
+# 2. Metadata va core dependencies (pep 621)
+# thong tin chung ve project
 [project]
-name = "nifpredict"
+name = "nifpredict" 
 version = "0.1.0"
-description = "Nền tảng sinh học tính toán dự đoán khả năng cố định đạm"
+description = "A computational biology platform that predicts nitrogen fixation capability from gene and protein sequence data."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10"       # moi truong toi thieu >= 3.10
+license ={ text = "MIT" }        # giay phep ma nguon mo
+
+# tac gia
+authors =[
+    { name = "NifPredict Architecture", email = "namdv1611@gmail.com" }
+]
+
+# keyword tim kien khi dua len PyPI
+keywords = ["bioinformatics", "nitrogen-fixation", "nif-genes", "machine-learning", "genomics"]
+
+# phan loai chuan cua PyPI
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+# thu vien loi~
 dependencies = [
-    "pandas>=2.0.0",
-    "numpy>=1.24.0",
-    "pyyaml>=6.0",
-    "pydantic>=2.0.0",
-    "requests>=2.28.0"
+    "biopython>=1.81",          # xu ly sinh hoc (fasta, genbank, alignment)
+    "pandas>=2.0.0",            # quan ly/xu ly du lieu bang (dataframe)
+    "numpy>=1.24.0,<2.0.0",     # tinh toan mang. chan < 2.0.0 de tranh vo ABI voi biopython
+    "scikit-learn>=1.3.0",      # thuat toan ML co ban (random forest, svm,..)
+    "pyyaml>=6.0",              # doc/ghi file cau hinh he thong (.yaml)
+    "pydantic>=2.0.0",          # validation va ep kieu du lieu dau vao/ra
+    "requests>=2.28.0",         # gui http requests goi api lay du lieu tu ncbi, uniprot
+    "typer>=0.9.0",             # framework xay dung giao dien dong lenh (CLI)
 ]
 
+# 3. optional dependencies
+# tach nho dependency thanh cac nhom tieng de toi uu dung luong cai dat
 [project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0"
+
+# nhom phu thuoc cho ML nang cao 
+ml = [
+    "torch>=2.0.0",     # deep learning framework (mo hinh chuoi protein phuc tap)
+    "lightgbm>=4.0.0"   # GBDT model hieu nang cao cho du lieu dang bang
 ]
 
+# nhom test
+dev = [
+    "pytest>=7.4.0",        # framework thu thi unit test
+    "pytest-cov>=4.1.0",    # do do bao phu ma nguon
+    "ruff>=0.1.0",          # linter & formatter sieu toc
+    "mypy>=1.5.0",          # kiem tra kieu du lieu tinh
+]
+
+# nhom tai lieu
+docs = [
+    "mkdocs>=1.5.0",            # trinh tao trang documentation tinh~
+    "mkdocs-material>=9.0.0"    # theme cho mkdocs
+]
+
+# 4. Entry points & package discovery
+# tao cau lenh CLI va cau hinh quet thu muc ma nguon
+
+# cho phep go lenh `nifpredict` truc tiep tu terminal sau khi cai package
+[project.scripts]
+nifpredict = "nifpredict.cli:app"   # tro toi doi tuong `app = Typer()` trong file nifpredict/cli.py
+
+[project.urls]
+Repository = "https://github.com/damvunam/nif-predict"
+
+# tu dong tim kiem ma nguon trong thu muc goc 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["nifpredict*"]
+include = ["nifpredict*"]       # chi dong goi thu muc co ten bat dau bang nifpredict
+
+# 5. code quality & testing configuration
+# cau hinh tap trung co cac tool: ruff, mypy, pytest
+[tool.ruff]
+line-length = 88            # do dai toi da cho 1 dong code
+target-version = "py310"    # toi uu syntax cho python 3.10+
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort (tu dong sap xep import)
+    "N",    # pep8-naming (quy tac dat ten ham/bien)
+    "UP",   # pyupgrade
+]
+
+# cau hinh static type checker
+[tool.mypy]
+python_version = "3.10"
+strict = true                   # kiem tra du lieu nghiem ngat
+plugins = ["pydantic.mypy"]     # plugin ho tro nhan dien schema cua pydantic v2
+
+# cau hinh unit test
+[tool.pytest.ini_options]
+testpaths = ["tests"]                   # thu muc chua cac file test
+python_files = ["test_*.py"]            # quy tac dat ten file test
+addopts = "-ra -q --cov=nifpredict"     # tu dong tinh % code coverage cho package `nifpredict`
