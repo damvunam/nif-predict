@@ -12,21 +12,21 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 # Sub-models
-class ProjectConfig(BaseModel):
+class ProjectConfig(BaseModel):         # luu thong tin dinh danh
     name: str
     version: str
     environment: Literal["development", "testing", "production"]
     description: str
 
 
-class ComputingConfig(BaseModel):
+class ComputingConfig(BaseModel):        # quan ly tai nguyen phan cung
     max_threads: int = Field(gt=0, description="Số CPU threads phải > 0")
     chunk_size: int = Field(gt=0)
     enable_gpu: bool
 
 
-class PathsConfig(BaseModel):
-    base_dir: Path = PROJECT_ROOT
+class PathsConfig(BaseModel):           # quan ly toan bo cau truc thu muc
+    base_dir: Optional[Path] = Field(default_factory=lambda: PROJECT_ROOT)
     raw: Dict[str, Path]
     interim: Dict[str, Path]
     processed: Dict[str, Path]
@@ -34,7 +34,7 @@ class PathsConfig(BaseModel):
     models: Path
     log_dir: Path
 
-    @model_validator(mode="after")
+    @model_validator(mode="after")   
     def resolve_absolute_paths(self) -> "PathsConfig":
         """Chuyển đổi toàn bộ đường dẫn tương đối thành tuyệt đối dựa trên base_dir."""
         base = self.base_dir.resolve()
@@ -50,8 +50,8 @@ class PathsConfig(BaseModel):
                 category[key] = _to_abs(path_val)
         return self
 
-
-class AlignmentThresholds(BaseModel):
+# cac nguong~ sinh hoc
+class AlignmentThresholds(BaseModel):       # nguong ve alignment
     use_trusted_cutoffs: bool
     e_value_max: float = Field(gt=0.0)
     min_coverage: float = Field(ge=0.0, le=1.0)
@@ -59,7 +59,7 @@ class AlignmentThresholds(BaseModel):
     min_bit_score: float = Field(ge=0.0)
 
 
-class SyntenyThresholds(BaseModel):
+class SyntenyThresholds(BaseModel):         # nguong ve synteny
     max_intergenic_distance_bp: int = Field(gt=0)
     min_core_genes_required: int = Field(gt=0)
     strand_sensitive: bool
@@ -76,14 +76,15 @@ class BiologicalThresholdsConfig(BaseModel):
     gene_systems: Dict[str, GeneSystem]
 
 
-class SplitStrategyConfig(BaseModel):
+# ML
+class SplitStrategyConfig(BaseModel):               # chia tep train/val/test theo taxonomy
     train_ratio: float = Field(ge=0.0, le=1.0)
     validation_ratio: float = Field(ge=0.0, le=1.0)
     test_ratio: float = Field(ge=0.0, le=1.0)
     split_by_taxon: bool
     taxonomy_level: Literal["species", "genus", "family", "order", "class", "phylum"]
 
-    @model_validator(mode="after")
+    @model_validator(mode="after")                  # tu dong cong tong
     def validate_split_ratios(self) -> "SplitStrategyConfig":
         total = round(self.train_ratio + self.validation_ratio + self.test_ratio, 5)
         if total != 1.0:
@@ -91,37 +92,38 @@ class SplitStrategyConfig(BaseModel):
         return self
 
 
-class ModelTrainingConfig(BaseModel):
+class ModelTrainingConfig(BaseModel):               # quan ly cac tham so khi train model
     cv_folds: int = Field(gt=1)
     imbalance_handling: Literal["None", "ClassWeight", "SMOTE"]
     evaluation_metrics: str
 
 
-class MachineLearningConfig(BaseModel):
+class MachineLearningConfig(BaseModel):             
     random_seed: int
     split_strategy: SplitStrategyConfig
     model_training: ModelTrainingConfig
 
 
-class NCBIConfig(BaseModel):
+# ncbi
+class NCBIConfig(BaseModel):            # quan ly tham so ket noi NCBI API v2
     api_base_url: str
     api_key_env_var: str
     timeout_seconds: int = Field(gt=0)
     max_retries: int = Field(ge=0)
     rate_limit_per_sec: int = Field(gt=0)
 
-    @property
+    @property           # doc api_key sach
     def api_key(self) -> Optional[str]:
         """Đọc NCBI API key từ môi trường runtime."""
         return os.getenv(self.api_key_env_var)
 
 
-class LoggingConfig(BaseModel):
+class LoggingConfig(BaseModel):         # quan ly log
     level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     format: str
     file_path: Path
 
-    @model_validator(mode="after")
+    @model_validator(mode="after")      
     def resolve_file_path(self) -> "LoggingConfig":
         """Đảm bảo file_path được resolve thành đường dẫn tuyệt đối theo PROJECT_ROOT."""
         if not self.file_path.is_absolute():
@@ -160,7 +162,7 @@ class AppConfig(BaseModel):
 class EnvOverrides(BaseSettings):
     """Cấu hình đè từ môi trường runtime (Tiền tố: NIF_)."""
 
-    model_config = SettingsConfigDict(env_prefix="NIF_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="NIFPREDICT_", env_file=".env", extra="ignore")
 
     enable_gpu: Optional[bool] = None
     max_threads: Optional[int] = None

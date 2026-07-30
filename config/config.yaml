@@ -13,14 +13,14 @@ computing:
 
 # 3. path management
 paths:
-  base_dir: "."
+  base_dir: null
   raw:
     zip_dir: "data/raw/zip_archives"
     genomes_dir: "data/raw/genomes"
     metadata_dir: "data/raw/metadata"
   interim:
     annotation_dir: "data/interim/annotations"
-    hmmr_dir: "data/interim/hmm_outputs"
+    hmmer_dir: "data/interim/hmm_outputs"
   processed:
     features_dir: "data/processed/features"
     predictions_dir: "data/processed/predictions"
