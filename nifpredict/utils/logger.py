@@ -116,6 +116,8 @@ def get_logger(name: str) -> logging.Logger:
     """
     return logging.getLogger(name)
 
+setup_logger = setup_logger_from_config
+logger = get_logger("nifpredict")
 
 def setup_worker_queue_logger(
     queue: Any,

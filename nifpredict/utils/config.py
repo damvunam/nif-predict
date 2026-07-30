@@ -37,7 +37,7 @@ class PathsConfig(BaseModel):           # quan ly toan bo cau truc thu muc
     @model_validator(mode="after")   
     def resolve_absolute_paths(self) -> "PathsConfig":
         """Chuyển đổi toàn bộ đường dẫn tương đối thành tuyệt đối dựa trên base_dir."""
-        base = self.base_dir.resolve()
+        base = (self.base_dir or PROJECT_ROOT).resolve()
 
         def _to_abs(p: Path) -> Path:
             return p if p.is_absolute() else (base / p).resolve()
