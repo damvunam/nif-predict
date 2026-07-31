@@ -45,6 +45,7 @@ dependencies = [
     "requests>=2.28.0",         # gui http requests goi api lay du lieu tu ncbi, uniprot
     "typer>=0.9.0",             # framework xay dung giao dien dong lenh (CLI)
     "pydantic-settings>=2.0.0"
+    "filelock>=3.12.0"
 ]
 
 # 3. optional dependencies

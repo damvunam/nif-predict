@@ -50,6 +50,38 @@ class PathsConfig(BaseModel):           # quan ly toan bo cau truc thu muc
                 category[key] = _to_abs(path_val)
         return self
 
+    @property
+    def raw_genomes_dir(self) -> Path:
+        return self.raw["genomes_dir"]
+
+    @property
+    def raw_metadata_dir(self) -> Path:
+        return self.raw["metadata_dir"]
+
+    @property
+    def raw_zip_dir(self) -> Path:
+        return self.raw["zip_dir"]
+
+    @property
+    def annotation_dir(self) -> Path:
+        return self.interim["annotation_dir"]
+
+    @property
+    def hmmer_dir(self) -> Path:
+        return self.interim["hmmer_dir"]
+
+    @property
+    def hmm_profiles_dir(self) -> Path:
+        """Tự động ưu tiên thư mục cấu hình, fallback sang data/hmm_profiles nếu tồn tại."""
+        db_path = self.databases.get("hmm_profiles")
+        fallback_path = (PROJECT_ROOT / "data" / "hmm_profiles").resolve()
+        if db_path and db_path.exists():
+            return db_path
+        if fallback_path.exists():
+            return fallback_path
+        return db_path or fallback_path
+
+
 # cac nguong~ sinh hoc
 class AlignmentThresholds(BaseModel):       # nguong ve alignment
     use_trusted_cutoffs: bool
