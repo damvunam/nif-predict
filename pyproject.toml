@@ -39,12 +39,13 @@ dependencies = [
     "biopython>=1.81",          # xu ly sinh hoc (fasta, genbank, alignment)
     "pandas>=2.0.0",            # quan ly/xu ly du lieu bang (dataframe)
     "numpy>=1.24.0,<2.0.0",     # tinh toan mang. chan < 2.0.0 de tranh vo ABI voi biopython
+    "scipy>=1.10.0",
     "scikit-learn>=1.3.0",      # thuat toan ML co ban (random forest, svm,..)
     "pyyaml>=6.0",              # doc/ghi file cau hinh he thong (.yaml)
     "pydantic>=2.0.0",          # validation va ep kieu du lieu dau vao/ra
     "requests>=2.28.0",         # gui http requests goi api lay du lieu tu ncbi, uniprot
     "typer>=0.9.0",             # framework xay dung giao dien dong lenh (CLI)
-    "pydantic-settings>=2.0.0"
+    "pydantic-settings>=2.0.0",
     "filelock>=3.12.0"
 ]
 
