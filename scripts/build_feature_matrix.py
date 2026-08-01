@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
-"""NifPredict Feature Matrix Builder Script (HPC Production-Grade).
-
-Orchestrates end-to-end feature extraction with zero-RAM-spike PyArrow streaming,
-dynamic schema unification with null padding, deterministic column ordering,
-non-colliding session checkpointing, and automatic resource cleanup.
+"""
+NifPredict Feature Matrix Builder Script (HPC Production-Grade).
 """
 
 import argparse
@@ -24,91 +21,104 @@ import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 from tqdm import tqdm
 
-from nifpredict.features.hmm_annotator import HMMAnnotator
 from nifpredict.features.cluster_filter import ClusterFilter
-from nifpredict.utils.config import settings
-from nifpredict.features.feature_extractor import FeatureExtractor
-from nifpredict.utils.logger import setup_logger
+from nifpredict.features.feature_extractor import GenomeFeatureExtractor
+from nifpredict.features.hmm_annotator import HMMAnnotator
+from nifpredict.utils.config import AppConfig, load_config
+from nifpredict.utils.logger import get_logger
 
-logger = setup_logger("nifpredict.scripts.build_features")
+logger = get_logger("nifpredict.scripts.build_features")
 
-# Biến toàn cục trong từng Worker Process (Cached Objects)
+_global_config: Optional[AppConfig] = None
 _worker_annotator: Optional[HMMAnnotator] = None
 _worker_cluster_filter: Optional[ClusterFilter] = None
-_worker_feature_extractor: Optional[FeatureExtractor] = None
+_worker_extractor: Optional[GenomeFeatureExtractor] = None
 
 
 def _init_worker() -> None:
-    """Khởi tạo một lần duy nhất cho mỗi Worker Process khi spawn/fork."""
-    global _worker_annotator, _worker_cluster_filter, _worker_feature_extractor
-    _worker_annotator = HMMAnnotator(config=settings.hmm_config)
-    _worker_cluster_filter = ClusterFilter(config=settings.filter_config)
-    _worker_feature_extractor = FeatureExtractor(config=settings.feature_config)
+    global _global_config, _worker_annotator, _worker_cluster_filter, _worker_extractor
+    _global_config = load_config(auto_create_dirs=False)
+    _worker_annotator = HMMAnnotator(config=_global_config)
+    _worker_cluster_filter = ClusterFilter(config=_global_config)
+    _worker_extractor = GenomeFeatureExtractor(config=_global_config)
 
 
 def _process_single_genome(
-    accession_id: str, genome_path: Optional[Path]
+    accession_id: str,
+    faa_path: Optional[Path],
+    gff_path: Optional[Path],
 ) -> Optional[Dict[str, Any]]:
-    """Worker task xử lý 1 accession sử dụng các cached instances.
-
-    Primary Column Fix: Đưa accession_id lên đầu Dictionary.
-    """
-    global _worker_annotator, _worker_cluster_filter, _worker_feature_extractor
-
-    if not _worker_annotator or not _worker_cluster_filter or not _worker_feature_extractor:
+    global _global_config, _worker_annotator, _worker_cluster_filter, _worker_extractor
+    if not _worker_annotator or not _worker_cluster_filter or not _worker_extractor:
         _init_worker()
 
+    if not faa_path or not faa_path.exists() or not gff_path or not gff_path.exists():
+        return None
+
     try:
-        annotations = _worker_annotator.annotate(
-            accession_id=accession_id, genome_path=genome_path
-        )
-        if not annotations:
-            return None
+        hmm_dir = _global_config.paths.hmm_profiles_dir
+        all_hits: List[pd.DataFrame] = []
 
-        filtered_clusters = _worker_cluster_filter.filter(annotations)
-        if not filtered_clusters:
-            return None
+        for hmm_file in hmm_dir.glob("*.hmm"):
+            if "pfam-a" in hmm_file.name.lower():
+                continue
+            df_hit = _worker_annotator.annotate_to_dataframe(faa_path, hmm_file)
+            if not df_hit.empty:
+                all_hits.append(df_hit)
 
-        features = _worker_feature_extractor.extract(
-            accession_id=accession_id, clusters=filtered_clusters
-        )
-        if not features:
-            return None
+        df_all_hits = pd.concat(all_hits, ignore_index=True) if all_hits else pd.DataFrame()
+        df_gff = _worker_cluster_filter.parse_gff3(gff_path)
 
-        # Hotfix 1: accession_id làm Primary Key ở vị trí đầu tiên
-        return {"accession_id": accession_id, **features}
+        clusters = []
+        if not df_all_hits.empty and not df_gff.empty:
+            clusters = _worker_cluster_filter.group_into_clusters(df_all_hits, df_gff)
+
+        raw_record = {
+            "accession": accession_id,
+            "df_all_hits": df_all_hits,
+            "clusters": clusters,
+            "pfam_domains": df_all_hits["gene_family"].tolist() if "gene_family" in df_all_hits.columns else [],
+            "metadata": {},
+        }
+
+        # Warm-fit if required and transform
+        if not _worker_extractor.is_fitted_:
+            _worker_extractor.fit([raw_record])
+
+        df_feat = _worker_extractor.transform([raw_record], return_sparse=False)
+        res_dict = df_feat.iloc[0].to_dict()
+        res_dict["accession_id"] = accession_id
+        return res_dict
 
     except Exception as exc:
         logger.error(f"Lỗi khi xử lý Accession [{accession_id}]: {exc}", exc_info=False)
         return None
 
 
-def index_genome_paths(genomes_dir: Path) -> Dict[str, Path]:
-    """Quét và index trước đường dẫn file genome bằng 1 lần duyệt đĩa duy nhất."""
-    mapping: Dict[str, Path] = {}
-    if not genomes_dir or not genomes_dir.exists():
-        return mapping
+def index_genome_paths(genomes_dir: Path) -> Tuple[Dict[str, Path], Dict[str, Path]]:
+    faa_map: Dict[str, Path] = {}
+    gff_map: Dict[str, Path] = {}
+    if not genomes_dir.exists():
+        return faa_map, gff_map
 
-    valid_extensions = {".fasta", ".fna", ".fa", ".gbk", ".gff"}
     for file in genomes_dir.iterdir():
-        if file.is_file() and file.suffix.lower() in valid_extensions:
-            mapping[file.stem] = file
+        if not file.is_file():
+            continue
+        stem = file.name.split("_genomic")[0].split("_protein")[0]
+        if file.suffix == ".faa" or file.name.endswith("_protein.faa"):
+            faa_map[stem] = file
+        elif file.suffix == ".gff" or file.name.endswith("_genomic.gff"):
+            gff_map[stem] = file
 
-    logger.info(f"Đã index thành công {len(mapping)} file genome từ đĩa.")
-    return mapping
+    return faa_map, gff_map
 
 
 def get_completed_accessions(checkpoint_dir: Path) -> Set[str]:
-    """Thu thập danh sách accession đã được lưu trữ thành công từ tất cả checkpoints."""
     completed: Set[str] = set()
     if not checkpoint_dir.exists():
         return completed
 
     checkpoint_files = list(checkpoint_dir.glob("chk_*.parquet"))
-    if not checkpoint_files:
-        return completed
-
-    logger.info(f"Đang quét {len(checkpoint_files)} file checkpoint để khôi phục trạng thái...")
     for chk_file in checkpoint_files:
         try:
             dataset = ds.dataset(chk_file, format="parquet")
@@ -122,42 +132,29 @@ def get_completed_accessions(checkpoint_dir: Path) -> Set[str]:
 def stream_merge_checkpoints(
     checkpoint_dir: Path, output_path: Path, metadata_path: Path
 ) -> Tuple[int, int]:
-    """Hợp nhất các checkpoint bằng PyArrow với Unify Schema động & Null Padding Safety."""
     chk_files = sorted(list(checkpoint_dir.glob("chk_*.parquet")))
     if not chk_files:
         raise FileNotFoundError("Không tìm thấy file checkpoint nào để hợp nhất.")
 
-    logger.info(f"Đang phân tích và hợp nhất Schema cho {len(chk_files)} checkpoints...")
-
-    # 1. Unify Schema toàn cục từ tất cả các checkpoints
     datasets = [ds.dataset(f, format="parquet") for f in chk_files]
-    schemas = [d.schema for d in datasets]
-    unified_schema = pa.unify_schemas(schemas)
+    unified_schema = pa.unify_schemas([d.schema for d in datasets])
 
-    # 2. Đảm bảo tính Deterministic: accession_id ở đầu, các feature được sort A-Z
     feature_names = sorted([name for name in unified_schema.names if name != "accession_id"])
     final_schema_names = ["accession_id"] + feature_names
-
     final_fields = [unified_schema.field(name) for name in final_schema_names]
     final_schema = pa.schema(final_fields)
 
     total_samples = sum(d.count_rows() for d in datasets)
-    logger.info(f"Tổng mẫu: {total_samples} | Tổng chiều đặc trưng chuẩn hóa: {len(feature_names)}")
 
-    # 3. Hàm Helper: Align Table bằng cách chèn Null Column cho các đặc trưng còn thiếu trong batch
     def align_table(table: pa.Table) -> pa.Table:
         existing_cols = set(table.schema.names)
         for field in final_fields:
             if field.name not in existing_cols:
-                # Chèn null array với kiểu dữ liệu chuẩn xác của field đó
                 null_array = pa.nulls(table.num_rows, type=field.type)
                 table = table.append_column(field, null_array)
-        # Sắp xếp lại danh sách cột theo đúng final_schema_names
         return table.select(final_schema_names)
 
-    # 4. Stream ghi ra đĩa
     is_parquet = output_path.suffix.lower() == ".parquet"
-
     if is_parquet:
         with pq.ParquetWriter(output_path, schema=final_schema, compression="snappy") as writer:
             for dataset in datasets:
@@ -172,7 +169,6 @@ def stream_merge_checkpoints(
                 write_options = pcsv.WriteOptions(include_header=(idx == 0))
                 pcsv.write_csv(aligned_table, out_file, write_options=write_options)
 
-    # 5. Ghi Metadata
     metadata = {
         "total_samples": total_samples,
         "num_features": len(feature_names),
@@ -189,45 +185,29 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="NifPredict HPC Feature Matrix Orchestrator")
     parser.add_argument("--input-file", "-i", type=Path, default=Path("data/batch_accessions.txt"))
     parser.add_argument("--genomes-dir", "-g", type=Path, default=Path("data/raw/genomes/"))
-    parser.add_argument(
-        "--output-path", "-o", type=Path, default=Path("data/processed/feature_matrix.parquet")
-    )
+    parser.add_argument("--output-path", "-o", type=Path, default=Path("data/processed/feature_matrix.parquet"))
     parser.add_argument("--batch-size", "-b", type=int, default=500)
     parser.add_argument("--num-workers", "-w", type=int, default=max(1, os.cpu_count() - 1))
-    parser.add_argument("--force-rebuild", action="store_true", help="Xóa checkpoint cũ và chạy lại từ đầu.")
-    parser.add_argument(
-        "--keep-checkpoints",
-        action="store_true",
-        help="Giữ lại thư mục checkpoint sau khi hợp nhất thành công.",
-    )
+    parser.add_argument("--force-rebuild", action="store_true")
+    parser.add_argument("--keep-checkpoints", action="store_true")
 
     args = parser.parse_args()
-
     output_path: Path = args.output_path
     output_dir = output_path.parent
     checkpoint_dir = output_dir / ".checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     metadata_path = output_dir / "feature_names.json"
 
-    # Tạo Session ID duy nhất cho lượt chạy này
     session_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
-
-    # 1. Thu thập dữ liệu & Indexing I/O
-    genome_map = index_genome_paths(args.genomes_dir)
+    faa_map, gff_map = index_genome_paths(args.genomes_dir)
 
     if args.input_file and args.input_file.exists():
         with open(args.input_file, "r", encoding="utf-8") as f:
             all_accessions = [line.strip() for line in f if line.strip() and not line.startswith("#")]
     else:
-        all_accessions = sorted(list(genome_map.keys()))
+        all_accessions = sorted(list(set(faa_map.keys()).intersection(set(gff_map.keys()))))
 
-    if not all_accessions:
-        logger.error("Không có accession nào để xử lý.")
-        sys.exit(1)
-
-    # 2. Quản lý Checkpoints / Resume logic
     if args.force_rebuild:
-        logger.warning("Cờ `--force-rebuild` được kích hoạt. Tiến hành xóa toàn bộ checkpoints cũ...")
         for chk in checkpoint_dir.glob("chk_*.parquet"):
             chk.unlink()
         completed_accessions = set()
@@ -236,16 +216,6 @@ def main() -> None:
 
     pending_accessions = [acc for acc in all_accessions if acc not in completed_accessions]
 
-    logger.info("=" * 60)
-    logger.info("   NIFPREDICT ORCHESTRATION PIPELINE (HPC PRODUCTION)")
-    logger.info(f"  • Session ID              : {session_id}")
-    logger.info(f"  • Tổng Accessions         : {len(all_accessions)}")
-    logger.info(f"  • Đã hoàn thành (Resume)  : {len(completed_accessions)}")
-    logger.info(f"  • Cần xử lý (Pending)     : {len(pending_accessions)}")
-    logger.info(f"  • Workers                 : {args.num_workers}")
-    logger.info("=" * 60)
-
-    # 3. Tiến hành trích xuất đặc trưng nếu còn pending accessions
     if pending_accessions:
         batches = [
             pending_accessions[i : i + args.batch_size]
@@ -253,10 +223,10 @@ def main() -> None:
         ]
 
         with ProcessPoolExecutor(max_workers=args.num_workers, initializer=_init_worker) as executor:
-            with tqdm(total=len(pending_accessions), desc="Orchestrating Pipeline", unit="genome") as pbar:
+            with tqdm(total=len(pending_accessions), desc="Building Features", unit="genome") as pbar:
                 for batch_idx, batch_accs in enumerate(batches, start=1):
                     futures = {
-                        executor.submit(_process_single_genome, acc, genome_map.get(acc)): acc
+                        executor.submit(_process_single_genome, acc, faa_map.get(acc), gff_map.get(acc)): acc
                         for acc in batch_accs
                     }
 
@@ -267,50 +237,25 @@ def main() -> None:
                             batch_results.append(res)
                         pbar.update(1)
 
-                    # Ghi Checkpoint với Session ID + Batch Index tuyệt đối
                     if batch_results:
                         df_batch = pd.DataFrame(batch_results)
                         batch_filename = f"chk_{session_id}_batch_{batch_idx:05d}.parquet"
-                        batch_filepath = checkpoint_dir / batch_filename
-                        df_batch.to_parquet(batch_filepath, engine="pyarrow", index=False)
+                        df_batch.to_parquet(checkpoint_dir / batch_filename, engine="pyarrow", index=False)
 
                     del batch_results
                     gc.collect()
 
-    # 4. Stream Aggregate Phase (Zero-RAM Spike + Dynamic Schema Alignment)
-    try:
-        total_samples, num_features = stream_merge_checkpoints(
-            checkpoint_dir=checkpoint_dir,
-            output_path=output_path,
-            metadata_path=metadata_path,
-        )
-    except Exception as err:
-        logger.error(f"Lỗi nghiêm trọng trong quá trình hợp nhất checkpoints: {err}")
-        sys.exit(1)
+    total_samples, num_features = stream_merge_checkpoints(checkpoint_dir, output_path, metadata_path)
 
-    # 5. Cleanup Checkpoint Files
     if not args.keep_checkpoints:
-        logger.info("Đang tự động dọn dẹp các tệp checkpoint trung gian...")
         for chk in checkpoint_dir.glob("chk_*.parquet"):
-            try:
-                chk.unlink()
-            except Exception as err:
-                logger.warning(f"Không thể xóa checkpoint {chk}: {err}")
-
+            chk.unlink()
         try:
             checkpoint_dir.rmdir()
         except OSError:
             pass
-    else:
-        logger.info(f"Checkpoints được giữ lại tại: `{checkpoint_dir}`")
 
-    logger.info("=" * 60)
-    logger.info("        HOÀN THÀNH XUẤT MA TRẬN ĐẶC TRƯNG TỔNG HỢP")
-    logger.info(f"  • Mẫu lưu trữ thành công  : {total_samples}")
-    logger.info(f"  • Số chiều đặc trưng      : {num_features}")
-    logger.info(f"  • File lưu trữ Ma trận    : {output_path}")
-    logger.info(f"  • File Metadata           : {metadata_path}")
-    logger.info("=" * 60)
+    logger.info(f"Hoàn tất xuất ma trận đặc trưng thành công! Samples: {total_samples}, Features: {num_features}")
 
 
 if __name__ == "__main__":
