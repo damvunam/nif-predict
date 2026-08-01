@@ -73,6 +73,13 @@ docs = [
     "mkdocs-material>=9.0.0"    # theme cho mkdocs
 ]
 
+# Nhom kiem soat phien ban du lieu & remote storage
+dvc = [
+    "dvc>=3.30.0",
+    "dvc-s3>=3.0.0",        # Dành cho AWS S3 hoac DAGsHub (S3-compatible)
+    "dvc-gdrive>=3.0.0",    # Dành cho Google Drive
+]
+
 # 4. Entry points & package discovery
 # tao cau lenh CLI va cau hinh quet thu muc ma nguon
 

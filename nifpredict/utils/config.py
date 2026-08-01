@@ -1,3 +1,9 @@
+"""
+Module: nifpredict.utils.config
+Description: Centralized Pydantic v2 Configuration Management for NifPredict.
+             Supports environment variable overrides and path resolution.
+"""
+
 from functools import lru_cache
 import os
 from pathlib import Path
@@ -7,25 +13,39 @@ import yaml
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Định vị Project Root độc lập hoàn toàn với CWD
+# Base Directory Resolution
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
+# Ánh xạ chuẩn 2 chiều giữa Pfam Accession và Gene Symbol
+PFAM_TO_GENE_MAP: Dict[str, str] = {
+    "PF00142": "nifH",
+    "PF00148": "nifD",
+    "PF02826": "nifK",
+    "PF05910": "anfG",
+    "PF05911": "vnfG",
+    "PF01202": "fixA",
+    "PF02525": "fixB",
+    "PF02526": "fixC",
+    "PF01802": "fixX",
+}
 
-# Sub-models
-class ProjectConfig(BaseModel):         # luu thong tin dinh danh
+GENE_TO_PFAM_MAP: Dict[str, str] = {v: k for k, v in PFAM_TO_GENE_MAP.items()}
+
+
+class ProjectConfig(BaseModel):
     name: str
     version: str
     environment: Literal["development", "testing", "production"]
     description: str
 
 
-class ComputingConfig(BaseModel):        # quan ly tai nguyen phan cung
+class ComputingConfig(BaseModel):
     max_threads: int = Field(gt=0, description="Số CPU threads phải > 0")
     chunk_size: int = Field(gt=0)
     enable_gpu: bool
 
 
-class PathsConfig(BaseModel):           # quan ly toan bo cau truc thu muc
+class PathsConfig(BaseModel):
     base_dir: Optional[Path] = Field(default_factory=lambda: PROJECT_ROOT)
     raw: Dict[str, Path]
     interim: Dict[str, Path]
@@ -34,9 +54,8 @@ class PathsConfig(BaseModel):           # quan ly toan bo cau truc thu muc
     models: Path
     log_dir: Path
 
-    @model_validator(mode="after")   
+    @model_validator(mode="after")
     def resolve_absolute_paths(self) -> "PathsConfig":
-        """Chuyển đổi toàn bộ đường dẫn tương đối thành tuyệt đối dựa trên base_dir."""
         base = (self.base_dir or PROJECT_ROOT).resolve()
 
         def _to_abs(p: Path) -> Path:
@@ -72,7 +91,6 @@ class PathsConfig(BaseModel):           # quan ly toan bo cau truc thu muc
 
     @property
     def hmm_profiles_dir(self) -> Path:
-        """Tự động ưu tiên thư mục cấu hình, fallback sang data/hmm_profiles nếu tồn tại."""
         db_path = self.databases.get("hmm_profiles")
         fallback_path = (PROJECT_ROOT / "data" / "hmm_profiles").resolve()
         if db_path and db_path.exists():
@@ -82,19 +100,20 @@ class PathsConfig(BaseModel):           # quan ly toan bo cau truc thu muc
         return db_path or fallback_path
 
 
-# cac nguong~ sinh hoc
-class AlignmentThresholds(BaseModel):       # nguong ve alignment
-    use_trusted_cutoffs: bool
-    e_value_max: float = Field(gt=0.0)
-    min_coverage: float = Field(ge=0.0, le=1.0)
-    min_identity: float = Field(ge=0.0, le=1.0)
-    min_bit_score: float = Field(ge=0.0)
+class AlignmentThresholds(BaseModel):
+    use_trusted_cutoffs: bool = True
+    e_value_max: float = Field(default=1e-10, gt=0.0)
+    min_coverage: float = Field(default=0.7, ge=0.0, le=1.0)
+    min_identity: float = Field(default=0.35, ge=0.0, le=1.0)
+    min_bit_score: float = Field(default=80.0, ge=0.0)
 
 
-class SyntenyThresholds(BaseModel):         # nguong ve synteny
-    max_intergenic_distance_bp: int = Field(gt=0)
-    min_core_genes_required: int = Field(gt=0)
-    strand_sensitive: bool
+class SyntenyThresholds(BaseModel):
+    max_intergenic_distance_bp: int = Field(default=5000, gt=0)
+    max_divergent_gap_bp: int = Field(default=1500, gt=0)
+    min_core_genes_required: int = Field(default=2, gt=0)
+    strand_sensitive: bool = False
+    contig_edge_margin_bp: int = Field(default=1000, ge=0)
 
 
 class GeneSystem(BaseModel):
@@ -108,15 +127,14 @@ class BiologicalThresholdsConfig(BaseModel):
     gene_systems: Dict[str, GeneSystem]
 
 
-# ML
-class SplitStrategyConfig(BaseModel):               # chia tep train/val/test theo taxonomy
+class SplitStrategyConfig(BaseModel):
     train_ratio: float = Field(ge=0.0, le=1.0)
     validation_ratio: float = Field(ge=0.0, le=1.0)
     test_ratio: float = Field(ge=0.0, le=1.0)
     split_by_taxon: bool
     taxonomy_level: Literal["species", "genus", "family", "order", "class", "phylum"]
 
-    @model_validator(mode="after")                  # tu dong cong tong
+    @model_validator(mode="after")
     def validate_split_ratios(self) -> "SplitStrategyConfig":
         total = round(self.train_ratio + self.validation_ratio + self.test_ratio, 5)
         if total != 1.0:
@@ -124,49 +142,43 @@ class SplitStrategyConfig(BaseModel):               # chia tep train/val/test th
         return self
 
 
-class ModelTrainingConfig(BaseModel):               # quan ly cac tham so khi train model
+class ModelTrainingConfig(BaseModel):
     cv_folds: int = Field(gt=1)
     imbalance_handling: Literal["None", "ClassWeight", "SMOTE"]
     evaluation_metrics: str
 
 
-class MachineLearningConfig(BaseModel):             
+class MachineLearningConfig(BaseModel):
     random_seed: int
     split_strategy: SplitStrategyConfig
     model_training: ModelTrainingConfig
 
 
-# ncbi
-class NCBIConfig(BaseModel):            # quan ly tham so ket noi NCBI API v2
+class NCBIConfig(BaseModel):
     api_base_url: str
     api_key_env_var: str
     timeout_seconds: int = Field(gt=0)
     max_retries: int = Field(ge=0)
     rate_limit_per_sec: int = Field(gt=0)
 
-    @property           # doc api_key sach
+    @property
     def api_key(self) -> Optional[str]:
-        """Đọc NCBI API key từ môi trường runtime."""
         return os.getenv(self.api_key_env_var)
 
 
-class LoggingConfig(BaseModel):         # quan ly log
+class LoggingConfig(BaseModel):
     level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     format: str
     file_path: Path
 
-    @model_validator(mode="after")      
+    @model_validator(mode="after")
     def resolve_file_path(self) -> "LoggingConfig":
-        """Đảm bảo file_path được resolve thành đường dẫn tuyệt đối theo PROJECT_ROOT."""
         if not self.file_path.is_absolute():
             self.file_path = (PROJECT_ROOT / self.file_path).resolve()
         return self
 
 
-# Root Configuration Class
 class AppConfig(BaseModel):
-    """Root model quản lý toàn bộ cấu hình dự án NifPredict."""
-
     project: ProjectConfig
     computing: ComputingConfig
     paths: PathsConfig
@@ -176,7 +188,6 @@ class AppConfig(BaseModel):
     logging: LoggingConfig
 
     def create_directories(self) -> None:
-        """Tự động tạo mới hạ tầng thư mục làm việc nếu chưa tồn tại."""
         all_dirs = [
             self.paths.models,
             self.paths.log_dir,
@@ -190,10 +201,7 @@ class AppConfig(BaseModel):
             directory.mkdir(parents=True, exist_ok=True)
 
 
-# Environment Overrides
 class EnvOverrides(BaseSettings):
-    """Cấu hình đè từ môi trường runtime (Tiền tố: NIF_)."""
-
     model_config = SettingsConfigDict(env_prefix="NIFPREDICT_", env_file=".env", extra="ignore")
 
     enable_gpu: Optional[bool] = None
@@ -201,21 +209,11 @@ class EnvOverrides(BaseSettings):
     log_level: Optional[str] = None
 
 
-# Loader API
 @lru_cache(maxsize=1)
 def load_config(
     config_path: Optional[Union[str, Path]] = None,
     auto_create_dirs: bool = True,
 ) -> AppConfig:
-    """Tải, validate, đè biến môi trường và cache cấu hình ứng dụng.
-
-    Args:
-        config_path: Đường dẫn tới file config YAML tùy chỉnh. Nếu None sẽ dùng default.
-        auto_create_dirs: Khởi tạo thư mục tự động trên đĩa (Đặt False khi test).
-
-    Returns:
-        AppConfig: Cấu hình ứng dụng đã được validate hoàn chỉnh.
-    """
     if config_path is None:
         resolved_path = PROJECT_ROOT / "config" / "config.yaml"
     else:
@@ -233,7 +231,6 @@ def load_config(
     if not isinstance(raw_data, dict):
         raise ValueError(f"File cấu hình tại {resolved_path} phải là Dictionary.")
 
-    # Đè tham số từ biến môi trường nếu có
     env_settings = EnvOverrides()
     if env_settings.enable_gpu is not None:
         raw_data["computing"]["enable_gpu"] = env_settings.enable_gpu
@@ -243,8 +240,11 @@ def load_config(
         raw_data["logging"]["level"] = env_settings.log_level
 
     config = AppConfig(**raw_data)
-
     if auto_create_dirs:
         config.create_directories()
 
     return config
+
+
+# Singleton Instance hỗ trợ Import trực tiếp
+settings: AppConfig = load_config(auto_create_dirs=False)
