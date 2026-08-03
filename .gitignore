@@ -14,7 +14,7 @@ dist/
 logs/*
 results/
 annotation/
-PHASE_0.md
+dinh_huong/
 
 # MLOps Data Governance: Chặn toàn bộ data/, chỉ mở lại .gitkeep và .dvc
 data/*
