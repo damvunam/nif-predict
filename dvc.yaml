@@ -1,0 +1,48 @@
+stages:
+  # Stage 1: Tải & Khởi tạo HMM Profiles (Pfam-A & Nif)
+  setup_hmm:
+    cmd: python scripts/setup_hmm_profiles.py
+    deps:
+      - scripts/setup_hmm_profiles.py
+      - config/config.yaml
+    outs:
+      - data/hmm_profiles/Pfam-A.hmm:
+          cache: false  # Tải/sinh tự động, không push lên DVC Remote để tiết kiệm storage
+
+  # Stage 2: Chuẩn hóa cấu trúc dữ liệu thô
+  standardize_data:
+    cmd: python scripts/standardize_data_dir.py
+    deps:
+      - scripts/standardize_data_dir.py
+      - data/raw
+    outs:
+      - data/interim/annotations
+
+  # Stage 3: Tìm kiếm HMM & Xây dựng Ma trận đặc trưng
+  build_features:
+    cmd: python scripts/build_feature_matrix.py
+    deps:
+      - scripts/build_feature_matrix.py
+      - data/interim/annotations
+      - data/hmm_profiles
+    outs:
+      - data/processed/feature_matrix.parquet
+
+  # Stage 4: Phân tích EDA & Gán nhãn dữ liệu (Labeled Dataset)
+  eda_and_labeling:
+    cmd: python scripts/eda_and_labeling.py
+    deps:
+      - scripts/eda_and_labeling.py
+      - data/processed/feature_matrix.parquet
+    outs:
+      - data/processed/labeled_dataset.csv
+      - results/eda/eda_feature_stats.csv
+
+  # Stage 5: Dự đoán khả năng cố định đạm (Inference/Evaluation)
+  predict:
+    cmd: python scripts/predict.py --file data/processed/labeled_dataset.csv
+    deps:
+      - scripts/predict.py
+      - data/processed/labeled_dataset.csv
+    outs:
+      - data/processed/predictions
