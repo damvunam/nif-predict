@@ -45,58 +45,91 @@ class MarkerClusterExtractor:
         accession: str,
         df_hits: pd.DataFrame,
         clusters: List[Dict[str, Any]],
+        status: str = "SUCCESS",
     ) -> Dict[str, Any]:
-        features: Dict[str, Any] = {"accession": accession}
+        features: Dict[str, Any] = {"accession": accession, "status": status}
         found_core_count = 0
         total_core_genes = len(self.core_pfams)
 
+        # 1. Trích xuất chỉ số Core Genes (nifHDK)
         for gene_name, pfam_id in self.core_pfams.items():
-            if not df_hits.empty and "pfam_id" in df_hits.columns:
-                df_gene = df_hits[df_hits["pfam_id"] == pfam_id]
-            elif not df_hits.empty and "gene_family" in df_hits.columns:
-                df_gene = df_hits[df_hits["gene_family"].isin([pfam_id, gene_name])]
+            if df_hits is not None and not df_hits.empty:
+                if "pfam_id" in df_hits.columns:
+                    df_gene = df_hits[df_hits["pfam_id"] == pfam_id]
+                elif "gene_family" in df_hits.columns:
+                    df_gene = df_hits[df_hits["gene_family"].isin([pfam_id, gene_name])]
+                else:
+                    df_gene = pd.DataFrame()
             else:
                 df_gene = pd.DataFrame()
 
             hit_count = len(df_gene)
-            features[f"marker_core_{gene_name}_count"] = hit_count
-            features[f"marker_core_{gene_name}_max_bitscore"] = (
+            max_bitscore = (
                 float(df_gene["effective_score"].max()) if (not df_gene.empty and "effective_score" in df_gene.columns)
                 else (float(df_gene["raw_score"].max()) if (not df_gene.empty and "raw_score" in df_gene.columns) else 0.0)
             )
-            features[f"marker_core_{gene_name}_neg_log_evalue"] = compute_neg_log10_evalue(
+            min_evalue = (
+                float(df_gene["seq_evalue"].min()) if (not df_gene.empty and "seq_evalue" in df_gene.columns)
+                else 1.0
+            )
+            neg_log_evalue = compute_neg_log10_evalue(
                 df_gene["seq_evalue"] if (not df_gene.empty and "seq_evalue" in df_gene.columns) else pd.Series(dtype=float),
                 epsilon=self.epsilon,
             )
+
+            # Cột tên gen chuẩn
+            features[f"marker_core_{gene_name}_count"] = hit_count
+            features[f"marker_core_{gene_name}_max_bitscore"] = max_bitscore
+            features[f"marker_core_{gene_name}_neg_log_evalue"] = neg_log_evalue
+
+            # Bí danh tên Pfam ID (bắt buộc cho eda_and_labeling.py)
+            features[f"{pfam_id}_max_bitscore"] = max_bitscore
+            features[f"{pfam_id}_min_evalue"] = min_evalue
+            features[f"-log10_{pfam_id}_min_evalue"] = neg_log_evalue
+
             if hit_count > 0:
                 found_core_count += 1
 
         features["operon_core_completeness_score"] = float(found_core_count / total_core_genes)
 
+        # 2. Trích xuất chỉ số Auxiliary Genes (Bổ sung đoạn bị thiếu)
         for gene_name, pfam_id in self.aux_pfams.items():
-            if not df_hits.empty and "gene_family" in df_hits.columns:
+            if df_hits is not None and not df_hits.empty and "gene_family" in df_hits.columns:
                 df_gene = df_hits[df_hits["gene_family"].isin([pfam_id, gene_name])]
             else:
                 df_gene = pd.DataFrame()
             features[f"marker_aux_{gene_name}_count"] = len(df_gene)
 
-        features["clusters_found_count"] = len(clusters)
+        # 3. Trích xuất chỉ số Cụm Gen Synteny (Đưa NẰM NGOÀI các vòng lặp)
+        num_clusters = len(clusters) if clusters else 0
+        features["clusters_found"] = num_clusters
+        features["clusters_found_count"] = num_clusters
+
+        # Tính toán biến spans và complete_clusters trước khi gán
+        spans = [c.get("span_bp", 0) for c in clusters] if clusters else []
+        gene_counts = [c.get("gene_count", 0) for c in clusters] if clusters else []
+
+        core_pfams_set = set(self.core_pfams.values())
+        complete_clusters = sum(
+            1 for c in clusters 
+            if c.get("has_catalytic_core", False) 
+            or core_pfams_set.issubset(set(c.get("gene_families", [])))
+            or {"nifH", "nifD", "nifK"}.issubset(set(c.get("gene_families", [])))
+        ) if clusters else 0
+
         if clusters:
-            spans = [c.get("span_bp", 0) for c in clusters]
-            gene_counts = [c.get("gene_count", 0) for c in clusters]
+            features["max_cluster_span_bp"] = float(np.max(spans))
             features["cluster_max_span_bp"] = float(np.max(spans))
             features["cluster_avg_span_bp"] = float(np.mean(spans))
             features["cluster_max_gene_count"] = int(np.max(gene_counts))
-
-            core_pfam_ids = set(self.core_pfams.values())
-            complete_clusters = sum(
-                1 for c in clusters if core_pfam_ids.issubset(set(c.get("gene_families", [])))
-            )
-            features["cluster_complete_hdk_count"] = int(complete_clusters)
+            features["complete_hdk_clusters"] = complete_clusters
+            features["cluster_complete_hdk_count"] = complete_clusters
         else:
+            features["max_cluster_span_bp"] = 0.0
             features["cluster_max_span_bp"] = 0.0
             features["cluster_avg_span_bp"] = 0.0
             features["cluster_max_gene_count"] = 0
+            features["complete_hdk_clusters"] = 0
             features["cluster_complete_hdk_count"] = 0
 
         return features
@@ -132,7 +165,14 @@ class GenomeFeatureExtractor(BaseEstimator, TransformerMixin):
             min_frequency=min_taxon_freq,
             sparse_output=False,
         )
-        self.num_imputer = SimpleImputer(strategy="median")
+        
+        # HOTFIX: Bổ sung keep_empty_features=True và fill_value=0.0
+        # Ngăn SimpleImputer xóa cột khi gặp toàn bộ giá trị NaN trong sample đơn lẻ
+        self.num_imputer = SimpleImputer(
+            strategy="median",
+            fill_value=0.0,
+            keep_empty_features=True,
+        )
         self.num_scaler = StandardScaler()
 
         self.feature_names_: List[str] = []
@@ -144,6 +184,7 @@ class GenomeFeatureExtractor(BaseEstimator, TransformerMixin):
                 rec["accession"],
                 rec.get("df_all_hits", pd.DataFrame()),
                 rec.get("clusters", []),
+                status=rec.get("status", "SUCCESS")
             )
             for rec in raw_records
         ]
@@ -170,7 +211,7 @@ class GenomeFeatureExtractor(BaseEstimator, TransformerMixin):
         for col in self.numeric_meta_cols:
             if col not in df_meta.columns:
                 df_meta[col] = np.nan
-        df_num = df_meta[self.numeric_meta_cols]
+        df_num = df_meta[self.numeric_meta_cols].astype(float)
         num_imputed = self.num_imputer.fit_transform(df_num)
         self.num_scaler.fit(num_imputed)
 
@@ -203,7 +244,7 @@ class GenomeFeatureExtractor(BaseEstimator, TransformerMixin):
         for col in self.numeric_meta_cols:
             if col not in df_meta.columns:
                 df_meta[col] = np.nan
-        df_num = df_meta[self.numeric_meta_cols]
+        df_num = df_meta[self.numeric_meta_cols].astype(float)
         num_imputed = self.num_imputer.transform(df_num)
         num_scaled = self.num_scaler.transform(num_imputed)
         num_cols = [f"meta_num_{col}" for col in self.numeric_meta_cols]
@@ -218,7 +259,8 @@ class GenomeFeatureExtractor(BaseEstimator, TransformerMixin):
         )
         df_dense["accession"] = accessions
 
-        self.feature_names_ = [c for c in df_dense.columns if c != "accession"] + pfam_cols
+        non_feature_cols = {"accession", "status"}
+        self.feature_names_ = [c for c in df_dense.columns if c not in non_feature_cols] + pfam_cols
 
         if return_sparse:
             dense_vals = df_dense.drop(columns=["accession"]).values
