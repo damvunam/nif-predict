@@ -1,0 +1,95 @@
+schema: '2.0'
+stages:
+  setup_hmm:
+    cmd: python scripts/setup_hmm_profiles.py
+    deps:
+    - path: config/config.yaml
+      hash: md5
+      md5: e3c6e018446d679dab7976a62d4b989f
+      size: 3270
+    - path: scripts/setup_hmm_profiles.py
+      hash: md5
+      md5: bd672b8a265e0fea3a541d91bc336bfa
+      size: 10622
+    outs:
+    - path: data/hmm_profiles/Pfam-A.hmm
+      hash: md5
+      md5: 589ccc8370eaf079022db0dbb25c8aa2
+      size: 2246909846
+  standardize_data:
+    cmd: python scripts/standardize_data_dir.py
+    deps:
+    - path: data/raw
+      hash: md5
+      md5: 0de005a54a150af885d33a13ca6965d6.dir
+      size: 33463883
+      nfiles: 18
+    - path: scripts/standardize_data_dir.py
+      hash: md5
+      md5: e489851db779b764bb46a125eedd8da8
+      size: 16720
+    outs:
+    - path: data/interim/annotations
+      hash: md5
+      md5: 1cc51e6a896f1d0d8e4c2e06d840c26f.dir
+      size: 25896367
+      nfiles: 9
+  build_features:
+    cmd: python scripts/build_feature_matrix.py
+    deps:
+    - path: data/hmm_profiles
+      hash: md5
+      md5: aa16488a303e96133da56346162ecfde.dir
+      size: 4806441513
+      nfiles: 44
+    - path: data/interim/annotations
+      hash: md5
+      md5: 1cc51e6a896f1d0d8e4c2e06d840c26f.dir
+      size: 25896367
+      nfiles: 9
+    - path: scripts/build_feature_matrix.py
+      hash: md5
+      md5: a22bf06a8b69925c50d86b01e196584e
+      size: 13891
+    outs:
+    - path: data/processed/feature_matrix.parquet
+      hash: md5
+      md5: b3ef5227fc71d90f9ecfe352eb83044a
+      size: 14786
+  eda_and_labeling:
+    cmd: python scripts/eda_and_labeling.py
+    deps:
+    - path: data/processed/feature_matrix.parquet
+      hash: md5
+      md5: b3ef5227fc71d90f9ecfe352eb83044a
+      size: 14786
+    - path: scripts/eda_and_labeling.py
+      hash: md5
+      md5: 234f2dee9783beb60d945ae3f887e68e
+      size: 3846
+    outs:
+    - path: data/processed/labeled_dataset.csv
+      hash: md5
+      md5: 1863d41c23950f11aabfb27d8adb98c3
+      size: 1825
+    - path: results/eda/eda_feature_stats.csv
+      hash: md5
+      md5: 84e99796eeb73fc58efc34e64a38ede4
+      size: 1245
+  predict:
+    cmd: python scripts/predict.py --file data/processed/labeled_dataset.csv
+    deps:
+    - path: data/processed/labeled_dataset.csv
+      hash: md5
+      md5: 1863d41c23950f11aabfb27d8adb98c3
+      size: 1825
+    - path: scripts/predict.py
+      hash: md5
+      md5: 8aac8f789c8d2023482b68892fb70179
+      size: 1679
+    outs:
+    - path: data/processed/predictions
+      hash: md5
+      md5: d751713988987e9331980363e24189ce.dir
+      size: 0
+      nfiles: 0
