@@ -1,9 +1,10 @@
 import json
+from multiprocessing.util import get_logger
 import pandas as pd
 from pathlib import Path
 from typing import Dict, Any, Tuple, Optional
 
-from nifpredict.utils import load_config, setup_logger
+from nifpredict.utils import load_config, setup_logger_from_config
 from nifpredict.data import NCBIDownloader, NCBIExtractor
 from nifpredict.features import HMMAnnotator, ClusterFilter
 from nifpredict.features import GenomeFeatureExtractor
@@ -14,20 +15,20 @@ class NifPredictor:
 
     def __init__(self, config_path: str = "config/config.yaml") -> None:
         self.config = load_config(config_path)
-        self.logger = setup_logger("nifpredict.pipeline")
+        self.logger = setup_logger_from_config("nifpredict.pipeline")
         
         self.downloader = NCBIDownloader()
         
         # 1. Gán thuộc tính instance cho raw_genomes_dir & raw_metadata_dir
-        self.raw_genomes_dir = Path(self.config.get("raw_genomes_dir", "data/raw_genomes"))
-        self.raw_metadata_dir = Path(self.config.get("raw_metadata_dir", "data/raw_metadata"))
+        self.raw_genomes_dir = Path(getattr(self.config, "raw_genomes_dir", "data/raw_genomes"))
+        self.raw_metadata_dir = Path(getattr(self.config, "raw_metadata_dir", "data/raw_metadata"))
 
         self.extractor = NCBIExtractor(
             raw_genomes_dir=self.raw_genomes_dir, 
             raw_metadata_dir=self.raw_metadata_dir
         )
         self.annotator = HMMAnnotator()
-        self.cluster_filter = ClusterFilter(max_gap_bp=10000, min_core_genes=2)
+        self.cluster_filter = ClusterFilter()
         self.feature_extractor = GenomeFeatureExtractor()
 
         self.profiles = {
@@ -58,7 +59,7 @@ class NifPredictor:
             return {"accession": accession, "status": "FAILED", "error": f"Missing protein FAA file: {protein_fasta.name}"}
 
         # 3. Quét HMM Search các gen cố định đạm
-        annotation_dir = Path(self.config.get("paths", {}).get("annotation_dir", "data/annotation"))
+        annotation_dir = Path(getattr(self.config, "paths", {}).get("annotation_dir", "data/annotation"))
         annotation_dir.mkdir(parents=True, exist_ok=True)
         
         all_hits = []
@@ -198,7 +199,7 @@ class NifPredictor:
                 return {"accession": accession, "status": "MISSING_PROTEIN_FAA"}
 
             # 3. Quét HMM Search qua danh sách profiles (Đồng bộ với predict_accession)
-            annotation_dir = Path(self.config.get("paths", {}).get("annotation_dir", "data/annotation"))
+            annotation_dir = Path(getattr(self.config, "paths", {}).get("annotation_dir", "data/annotation"))
             annotation_dir.mkdir(parents=True, exist_ok=True)
 
             all_hits = []

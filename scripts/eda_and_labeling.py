@@ -5,15 +5,15 @@ from pathlib import Path
 
 
 def main():
-    input_csv = Path("data/processed/feature_matrix.csv")
+    input_file = Path("data/processed/feature_matrix.parquet")
     output_dir = Path("data/processed")
     reports_dir = Path("results/eda")
     
     output_dir.mkdir(parents=True, exist_ok=True)
     reports_dir.mkdir(parents=True, exist_ok=True)
 
-    if not input_csv.exists():
-        print(f"❌ Lỗi: Không tìm thấy file {input_csv}. Vui lòng chạy Phase 6 trước!")
+    if not input_file.exists():
+        print(f"❌ Lỗi: Không tìm thấy file {input_file}. Vui lòng chạy Phase 6 trước!")
         sys.exit(1)
 
     print("=" * 65)
@@ -21,15 +21,14 @@ def main():
     print("=" * 65)
 
     # 1. Nạp dữ liệu
-    df = pd.read_csv(input_csv)
+    df = pd.read_parquet(input_file)
     print(f"📊 Tổng số mẫu nạp vào       : {len(df)}")
 
     # 2. Quality Control (QC)
-    if "status" not in df.columns:
-        print("❌ Lỗi: Cột 'status' không tồn tại trong Feature Matrix!")
-        sys.exit(1)
-
-    df_clean = df[df["status"] == "SUCCESS"].copy()
+    if "status" in df.columns:
+        df_clean = df[df["status"] == "SUCCESS"].copy()
+    else:
+        df_clean = df.copy()
     print(f"✅ Số mẫu vượt qua QC        : {len(df_clean)} / {len(df)}")
 
     if df_clean.empty:
@@ -37,13 +36,13 @@ def main():
         sys.exit(0)
 
     # 3. Schema Validation & Gold-Standard Labeling
-    label_anchor_col = "complete_hdk_clusters"
-    if label_anchor_col not in df_clean.columns:
-        print(f"⚠️ Cột '{label_anchor_col}' không tồn tại. Tự động fallback dùng 'clusters_found'...")
+    if "complete_hdk_clusters" in df_clean.columns:
+        df_clean["target_bnf"] = df_clean["complete_hdk_clusters"].apply(lambda x: 1 if x >= 1 else 0)
+    elif "clusters_found" in df_clean.columns:
         df_clean["target_bnf"] = df_clean["clusters_found"].apply(lambda x: 1 if x > 0 else 0)
     else:
-        # Gắn nhãn chuẩn: có ít nhất 1 cụm trọn vẹn bộ ba nifHDK -> 1 (Diazotroph), ngược lại -> 0
-        df_clean["target_bnf"] = df_clean[label_anchor_col].apply(lambda x: 1 if x >= 1 else 0)
+        print("⚠️ Không tìm thấy cột cụm gen ('complete_hdk_clusters' / 'clusters_found'). Khởi tạo mặc định target_bnf = 0.")
+        df_clean["target_bnf"] = 0
 
     # 4. Biến đổi Log Transformation cho E-values (Log-Evalue transform)
     evalue_cols = [c for c in df_clean.columns if "evalue" in c]

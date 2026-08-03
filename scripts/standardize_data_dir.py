@@ -8,6 +8,8 @@ Refactored according to Data Architecture Audit:
 2. Architectural Safety: Eliminates source/target iteration conflicts and 
    maintains file extension consistency for downstream tools.
 3. Idempotency: Fully repeatable without risk of data corruption or duplicate move loops.
+4. Flat Layout Support: Scans and processes raw genome files (.fna, .gff, .faa) 
+   directly under data/raw/genomes/ and standardizes them into interim annotations.
 """
 
 import argparse
@@ -18,15 +20,12 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import yaml
-
 # Resolve project base directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-# Setup logger import with fallback
-from nifpredict.utils.config import load_config
+from nifpredict.utils.config import AppConfig, load_config
 from nifpredict.utils.logger import get_logger
 
 logger = get_logger("standardize_data_dir")
@@ -43,10 +42,24 @@ def compute_md5(file_path: Path, chunk_size: int = 65536) -> str:
     return hasher.hexdigest()
 
 
-class DataDirectoryStandardizer:
-    """Production-grade standardizer for biological raw data directories."""
+def parse_accession(file_path: Path) -> Optional[str]:
+    """Trích xuất mã Accession (GCF_xxx / GCA_xxx) từ tên tệp hoặc đường dẫn."""
+    match = ACCESSION_REGEX.search(file_path.name)
+    if match:
+        return match.group(1)
 
-    def __init__(self, config_path: Path, dry_run: bool = False) -> None:
+    for part in file_path.parts:
+        match = ACCESSION_REGEX.search(part)
+        if match:
+            return match.group(1)
+
+    return None
+
+
+class DataDirectoryStandardizer:
+    """Production-grade standardizer for biological raw & interim data directories."""
+
+    def __init__(self, config_path: Path, dry_run: bool = False, copy_mode: str = "copy") -> None:
         self.project_root = PROJECT_ROOT
         self.config_path = (
             config_path
@@ -54,8 +67,9 @@ class DataDirectoryStandardizer:
             else self.project_root / config_path
         )
         self.dry_run = dry_run
+        self.copy_mode = copy_mode
 
-        self.config = load_config(config_path)
+        self.config: AppConfig = load_config(self.config_path, auto_create_dirs=True)
         self._init_paths()
 
         self.stats: Dict[str, int] = {
@@ -64,48 +78,33 @@ class DataDirectoryStandardizer:
             "duplicates_removed": 0,
             "checksum_mismatches": 0,
             "dirs_cleaned": 0,
+            "interim_standardized": 0,
         }
 
-    def _load_config(self) -> dict:
-        """Load project configuration YAML file."""
-        if not self.config_path.exists():
-            raise FileNotFoundError(
-                f"Config file not found at: {self.config_path}"
-            )
-        with open(self.config_path, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f)
-
     def _init_paths(self) -> None:
-      """Đồng bộ đường dẫn chuẩn trực tiếp từ Pydantic AppConfig."""
-      self.target_genomes_dir = self.config.paths.raw["genomes_dir"]
-      self.target_metadata_dir = self.config.paths.raw["metadata_dir"]
-      self.target_zip_dir = self.config.paths.raw["zip_dir"]
+        """Đồng bộ đường dẫn chuẩn trực tiếp từ Pydantic AppConfig."""
+        self.target_genomes_dir = self.config.paths.raw_genomes_dir
+        self.target_metadata_dir = self.config.paths.raw_metadata_dir
+        self.target_zip_dir = self.config.paths.raw_zip_dir
+        self.interim_annotation_dir = self.config.paths.annotation_dir
 
-      self.external_source_dirs: List[Path] = [
-          self.project_root / "data/raw_genomes",
-          self.project_root / "data/raw_metadata",
-          self.project_root / "data/raw/zips",
-      ]
+        self.external_source_dirs: List[Path] = [
+            self.project_root / "data/raw_genomes",
+            self.project_root / "data/raw_metadata",
+            self.project_root / "data/raw/zips",
+        ]
 
-      self.root_zip = self.project_root / "ncbi_dataset.zip"
+        self.root_zip = self.project_root / "ncbi_dataset.zip"
 
-      if not self.dry_run:
-          self.target_genomes_dir.mkdir(parents=True, exist_ok=True)
-          self.target_metadata_dir.mkdir(parents=True, exist_ok=True)
-          self.target_zip_dir.mkdir(parents=True, exist_ok=True)
+        if not self.dry_run:
+            self.target_genomes_dir.mkdir(parents=True, exist_ok=True)
+            self.target_metadata_dir.mkdir(parents=True, exist_ok=True)
+            self.target_zip_dir.mkdir(parents=True, exist_ok=True)
+            self.interim_annotation_dir.mkdir(parents=True, exist_ok=True)
 
     def extract_accession(self, file_path: Path) -> Optional[str]:
-        """Extract NCBI accession (GCF_/GCA_) from path or filename."""
-        match = ACCESSION_REGEX.search(file_path.name)
-        if match:
-            return match.group(1)
-
-        for part in file_path.parts:
-            match = ACCESSION_REGEX.search(part)
-            if match:
-                return match.group(1)
-
-        return None
+        """Extract NCBI accession (GCF_/GCA_) using parse_accession helper."""
+        return parse_accession(file_path)
 
     def classify_and_resolve_target(
         self, file_path: Path
@@ -133,7 +132,7 @@ class DataDirectoryStandardizer:
         if not accession:
             return None
 
-        # 2. Data Provenance & Metadata files (preserves provenance instead of deleting)
+        # 2. Data Provenance & Metadata files
         if "dataset_catalog.json" in base_name:
             return f"{accession}_dataset_catalog.json{gz_ext}", self.target_metadata_dir
         if "md5sum.txt" in base_name:
@@ -166,8 +165,8 @@ class DataDirectoryStandardizer:
             return
 
         self.stats["processed"] += 1
-        src_rel = src.relative_to(self.project_root)
-        dst_rel = dst.relative_to(self.project_root)
+        src_rel = src.relative_to(self.project_root) if src.is_relative_to(self.project_root) else src
+        dst_rel = dst.relative_to(self.project_root) if dst.is_relative_to(self.project_root) else dst
 
         if dst.exists():
             src_md5 = compute_md5(src)
@@ -213,7 +212,7 @@ class DataDirectoryStandardizer:
             target_dst = self.target_zip_dir / self.root_zip.name
             self._safe_move_or_clean(self.root_zip, target_dst)
 
-    def scan_and_standardize(self) -> None:
+    def scan_and_standardize_raw(self) -> None:
         """
         Scan external source directories and canonical target directories separately
         to avoid undefined behaviors from concurrent reads/writes.
@@ -223,7 +222,6 @@ class DataDirectoryStandardizer:
             if not source_dir.exists():
                 continue
 
-            # Snapshot file list beforehand to avoid iterator mutation issues
             files = [p for p in source_dir.rglob("*") if p.is_file()]
             for file_path in files:
                 resolution = self.classify_and_resolve_target(file_path)
@@ -247,6 +245,78 @@ class DataDirectoryStandardizer:
                     if file_path.resolve() != dst_path.resolve():
                         self._safe_move_or_clean(file_path, dst_path)
 
+    def populate_interim_annotations(self) -> None:
+        """
+        Quét dữ liệu phẳng từ target_genomes_dir, gom nhóm bộ 3 (.fna, .gff, .faa)
+        và chuẩn hóa sang interim_annotation_dir.
+        """
+        logger.info(f"Đang đồng bộ dữ liệu phẳng từ '{self.target_genomes_dir}' sang '{self.interim_annotation_dir}'...")
+        if not self.target_genomes_dir.exists():
+            logger.warning(f"Thư mục raw genomes không tồn tại: {self.target_genomes_dir}")
+            return
+
+        grouped_files: Dict[str, Dict[str, Path]] = {}
+
+        for file_path in self.target_genomes_dir.iterdir():
+            if not file_path.is_file():
+                continue
+
+            acc = parse_accession(file_path)
+            if not acc:
+                continue
+
+            if acc not in grouped_files:
+                grouped_files[acc] = {}
+
+            name_lower = file_path.name.lower()
+            if name_lower.endswith(("_genomic.fna", ".fna", ".fasta", ".fa", "_genomic.fna.gz", ".fna.gz")):
+                grouped_files[acc]["fna"] = file_path
+            elif name_lower.endswith(("_genomic.gff", ".gff", ".gff3", "_genomic.gff.gz", ".gff.gz")):
+                grouped_files[acc]["gff"] = file_path
+            elif name_lower.endswith(("_protein.faa", ".faa", "_protein.faa.gz", ".faa.gz")):
+                grouped_files[acc]["faa"] = file_path
+
+        for acc, files in grouped_files.items():
+            has_fna, has_gff, has_faa = "fna" in files, "gff" in files, "faa" in files
+            if not (has_fna and has_gff and has_faa):
+                missing = [k.upper() for k in ["fna", "gff", "faa"] if k not in files]
+                logger.warning(f"[{acc}] Dữ liệu thô bị thiếu các tệp: {', '.join(missing)}")
+
+            for ftype, src_path in files.items():
+                is_gz = src_path.name.lower().endswith(".gz")
+                gz_ext = ".gz" if is_gz else ""
+
+                if ftype == "fna":
+                    dest_name = f"{acc}_genomic.fna{gz_ext}"
+                elif ftype == "gff":
+                    dest_name = f"{acc}_genomic.gff{gz_ext}"
+                elif ftype == "faa":
+                    dest_name = f"{acc}_protein.faa{gz_ext}"
+                else:
+                    dest_name = f"{acc}_{src_path.name}"
+
+                dest_path = self.interim_annotation_dir / dest_name
+
+                msg = (
+                    f"[DRY-RUN] Interim Sync: {src_path.name} -> {dest_path.name}"
+                    if self.dry_run
+                    else f"Interim Sync: {src_path.name} -> {dest_path.name}"
+                )
+                logger.info(msg)
+
+                if not self.dry_run:
+                    try:
+                        if self.copy_mode == "symlink":
+                            if dest_path.exists() or dest_path.is_symlink():
+                                dest_path.unlink()
+                            dest_path.symlink_to(src_path.resolve())
+                        else:
+                            shutil.copy2(src_path, dest_path)
+                    except Exception as err:
+                        logger.error(f"Lỗi khi đồng bộ {src_path.name} -> {dest_path.name}: {err}")
+
+            self.stats["interim_standardized"] += 1
+
     def cleanup_empty_directories(self) -> None:
         """Clean empty subdirectories from external sources after migration."""
         temp_filenames = {"README.md", ".DS_Store"}
@@ -255,7 +325,6 @@ class DataDirectoryStandardizer:
             if not d.exists():
                 continue
 
-            # Clean non-provenance temp files
             for item in list(d.rglob("*")):
                 if item.is_file() and item.name in temp_filenames:
                     item_rel = item.relative_to(self.project_root)
@@ -268,7 +337,6 @@ class DataDirectoryStandardizer:
                     if not self.dry_run:
                         item.unlink()
 
-            # Remove empty subdirectories bottom-up
             for sub_dir in sorted(list(d.rglob("*")), reverse=True):
                 if sub_dir.is_dir():
                     try:
@@ -282,7 +350,6 @@ class DataDirectoryStandardizer:
                     except OSError:
                         pass
 
-            # Remove main source folder if empty
             try:
                 if not self.dry_run and not any(d.iterdir()):
                     d.rmdir()
@@ -293,12 +360,15 @@ class DataDirectoryStandardizer:
     def run(self) -> None:
         """Run standardization process with full audit compliance."""
         logger.info(
-            f"Starting data directory standardization (Dry-run: {self.dry_run})"
+            f"Starting data directory standardization (Dry-run: {self.dry_run}, Mode: {self.copy_mode})"
         )
 
         self.process_root_files()
-        self.scan_and_standardize()
+        self.scan_and_standardize_raw()
+        self.populate_interim_annotations()
         self.cleanup_empty_directories()
+
+        interim_files_count = len(list(self.interim_annotation_dir.glob("*"))) if self.interim_annotation_dir.exists() else 0
 
         logger.info("=== Standardization Summary ===")
         logger.info(f"Files Processed        : {self.stats['processed']}")
@@ -306,6 +376,8 @@ class DataDirectoryStandardizer:
         logger.info(f"Duplicates Cleaned     : {self.stats['duplicates_removed']}")
         logger.info(f"Checksum Mismatches    : {self.stats['checksum_mismatches']}")
         logger.info(f"Directories Cleaned    : {self.stats['dirs_cleaned']}")
+        logger.info(f"Accessions Standardized: {self.stats['interim_standardized']}")
+        logger.info(f"Interim Annotation Dir : {self.interim_annotation_dir} ({interim_files_count} files)")
         logger.info("===============================")
 
 
@@ -324,12 +396,19 @@ def main() -> None:
         action="store_true",
         help="Simulate execution without modifying or moving any files.",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["copy", "symlink"],
+        default="copy",
+        help="Chế độ đồng bộ interim: 'copy' (sao chép tệp) hoặc 'symlink' (tạo liên kết mềm)",
+    )
 
     args = parser.parse_args()
 
     standardizer = DataDirectoryStandardizer(
         config_path=Path(args.config),
         dry_run=args.dry_run,
+        copy_mode=args.mode,
     )
     standardizer.run()
 

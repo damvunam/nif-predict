@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
 NifPredict Feature Matrix Builder Script (HPC Production-Grade).
+Sửa lỗi: Tự động chạy HMM search, xuất kết quả ra data/interim/hmm_outputs/
+và phòng chống crash StandardScaler khi ma trận đặc trưng bị rỗng.
 """
 
 import argparse
@@ -36,8 +38,9 @@ _worker_extractor: Optional[GenomeFeatureExtractor] = None
 
 
 def _init_worker() -> None:
+    """Khởi tạo tài nguyên cached một lần duy nhất cho mỗi Worker Process."""
     global _global_config, _worker_annotator, _worker_cluster_filter, _worker_extractor
-    _global_config = load_config(auto_create_dirs=False)
+    _global_config = load_config(auto_create_dirs=True)
     _worker_annotator = HMMAnnotator(config=_global_config)
     _worker_cluster_filter = ClusterFilter(config=_global_config)
     _worker_extractor = GenomeFeatureExtractor(config=_global_config)
@@ -48,17 +51,29 @@ def _process_single_genome(
     faa_path: Optional[Path],
     gff_path: Optional[Path],
 ) -> Optional[Dict[str, Any]]:
+    """Xử lý 1 genome: Quét HMM, lưu output ra data/interim/hmm_outputs/, gom cụm synteny
+
+    và trích xuất ma trận đặc trưng an toàn.
+    """
     global _global_config, _worker_annotator, _worker_cluster_filter, _worker_extractor
-    if not _worker_annotator or not _worker_cluster_filter or not _worker_extractor:
+    if not _worker_annotator or not _worker_cluster_filter or not _worker_extractor or not _global_config:
         _init_worker()
 
     if not faa_path or not faa_path.exists() or not gff_path or not gff_path.exists():
+        logger.warning(
+            f"[{accession_id}] Thiếu file FAA hoặc GFF đầu vào. "
+            f"FAA: {faa_path}, GFF: {gff_path}"
+        )
         return None
 
     try:
         hmm_dir = _global_config.paths.hmm_profiles_dir
+        hmm_output_dir = _global_config.paths.hmmer_dir
+        hmm_output_dir.mkdir(parents=True, exist_ok=True)
+
         all_hits: List[pd.DataFrame] = []
 
+        # 1. Thực thi HMM Search bằng pyhmmer quét qua các tệp .hmm
         for hmm_file in hmm_dir.glob("*.hmm"):
             if "pfam-a" in hmm_file.name.lower():
                 continue
@@ -67,6 +82,18 @@ def _process_single_genome(
                 all_hits.append(df_hit)
 
         df_all_hits = pd.concat(all_hits, ignore_index=True) if all_hits else pd.DataFrame()
+
+        # 2. GHI FILE ĐẦU RA HMM SEARCH VÀO data/interim/hmm_outputs/
+        output_tbl_path = hmm_output_dir / f"{accession_id}_hmm_hits.tsv"
+        if not df_all_hits.empty:
+            df_all_hits.to_csv(output_tbl_path, sep="\t", index=False)
+        else:
+            # Tạo file rỗng có header chuẩn để phục vụ provenance tracking
+            pd.DataFrame(
+                columns=["target_protein", "gene_family", "effective_score", "seq_evalue"]
+            ).to_csv(output_tbl_path, sep="\t", index=False)
+
+        # 3. Parse GFF3 & Lọc cụm gen Synteny
         df_gff = _worker_cluster_filter.parse_gff3(gff_path)
 
         clusters = []
@@ -75,45 +102,69 @@ def _process_single_genome(
 
         raw_record = {
             "accession": accession_id,
+            "status": "SUCCESS",
             "df_all_hits": df_all_hits,
             "clusters": clusters,
             "pfam_domains": df_all_hits["gene_family"].tolist() if "gene_family" in df_all_hits.columns else [],
             "metadata": {},
         }
 
-        # Warm-fit if required and transform
+        # 4. Trích xuất Ma trận Đặc trưng
         if not _worker_extractor.is_fitted_:
             _worker_extractor.fit([raw_record])
 
         df_feat = _worker_extractor.transform([raw_record], return_sparse=False)
+
+        # 5. CHỐT CHẶN AN TOÀN: Kiểm tra ma trận đặc trưng rỗng trước khi chuyển đổi
+        # Bỏ qua cột 'accession' nếu có, kiểm tra số lượng cột đặc trưng thực tế
+        feature_cols = [c for c in df_feat.columns if c != "accession"]
+        if df_feat.empty or len(feature_cols) == 0:
+            logger.warning(
+                f"[{accession_id}] CẢNH BÁO: Ma trận đặc trưng rỗng (0 đặc trưng). "
+                f"Bỏ qua mẫu để phòng chống lỗi crash StandardScaler!"
+            )
+            return None
+
         res_dict = df_feat.iloc[0].to_dict()
         res_dict["accession_id"] = accession_id
+        res_dict["status"] = "SUCCESS"
         return res_dict
 
     except Exception as exc:
-        logger.error(f"Lỗi khi xử lý Accession [{accession_id}]: {exc}", exc_info=False)
+        logger.error(f"Lỗi khi xử lý Accession [{accession_id}]: {exc}", exc_info=True)
         return None
 
 
-def index_genome_paths(genomes_dir: Path) -> Tuple[Dict[str, Path], Dict[str, Path]]:
+def index_genome_paths(
+    genomes_dir: Path,
+    annotation_dir: Optional[Path] = None,
+) -> Tuple[Dict[str, Path], Dict[str, Path]]:
+    """Index vị trí tệp FAA và GFF, ưu tiên tìm trong data/interim/annotations/ trước."""
     faa_map: Dict[str, Path] = {}
     gff_map: Dict[str, Path] = {}
-    if not genomes_dir.exists():
-        return faa_map, gff_map
 
-    for file in genomes_dir.iterdir():
-        if not file.is_file():
-            continue
-        stem = file.name.split("_genomic")[0].split("_protein")[0]
-        if file.suffix == ".faa" or file.name.endswith("_protein.faa"):
-            faa_map[stem] = file
-        elif file.suffix == ".gff" or file.name.endswith("_genomic.gff"):
-            gff_map[stem] = file
+    search_dirs = []
+    if annotation_dir and annotation_dir.exists():
+        search_dirs.append(annotation_dir)
+    if genomes_dir and genomes_dir.exists():
+        search_dirs.append(genomes_dir)
+
+    for search_dir in search_dirs:
+        for file in search_dir.iterdir():
+            if not file.is_file():
+                continue
+            # Trích xuất mã accession chính xác
+            stem = file.name.split("_genomic")[0].split("_protein")[0]
+            if (file.suffix == ".faa" or file.name.endswith("_protein.faa")) and stem not in faa_map:
+                faa_map[stem] = file
+            elif (file.suffix == ".gff" or file.name.endswith("_genomic.gff")) and stem not in gff_map:
+                gff_map[stem] = file
 
     return faa_map, gff_map
 
 
 def get_completed_accessions(checkpoint_dir: Path) -> Set[str]:
+    """Khôi phục trạng thái các accession đã được xử lý từ checkpoint parquet."""
     completed: Set[str] = set()
     if not checkpoint_dir.exists():
         return completed
@@ -132,6 +183,7 @@ def get_completed_accessions(checkpoint_dir: Path) -> Set[str]:
 def stream_merge_checkpoints(
     checkpoint_dir: Path, output_path: Path, metadata_path: Path
 ) -> Tuple[int, int]:
+    """Streaming merge tất cả tệp checkpoint thành file Parquet/CSV duy nhất."""
     chk_files = sorted(list(checkpoint_dir.glob("chk_*.parquet")))
     if not chk_files:
         raise FileNotFoundError("Không tìm thấy file checkpoint nào để hợp nhất.")
@@ -139,12 +191,22 @@ def stream_merge_checkpoints(
     datasets = [ds.dataset(f, format="parquet") for f in chk_files]
     unified_schema = pa.unify_schemas([d.schema for d in datasets])
 
-    feature_names = sorted([name for name in unified_schema.names if name != "accession_id"])
-    final_schema_names = ["accession_id"] + feature_names
+    priority_cols = ["accession_id", "status", "complete_hdk_clusters", "clusters_found"]
+    feature_names = sorted([name for name in unified_schema.names if name not in priority_cols])
+
+    existing_priority = [col for col in priority_cols if col in unified_schema.names]
+    final_schema_names = existing_priority + feature_names
     final_fields = [unified_schema.field(name) for name in final_schema_names]
     final_schema = pa.schema(final_fields)
 
     total_samples = sum(d.count_rows() for d in datasets)
+
+    # Chốt chặn an toàn ở cấp độ tổng hợp ma trận
+    if total_samples == 0 or len(feature_names) == 0:
+        logger.warning(
+            f"CẢNH BÁO NGHÊM TRỌNG: Tổng số mẫu={total_samples}, Số đặc trưng={len(feature_names)}. "
+            f"Ma trận đặc trưng cuối cùng bị rỗng!"
+        )
 
     def align_table(table: pa.Table) -> pa.Table:
         existing_cols = set(table.schema.names)
@@ -192,6 +254,8 @@ def main() -> None:
     parser.add_argument("--keep-checkpoints", action="store_true")
 
     args = parser.parse_args()
+    config = load_config(auto_create_dirs=True)
+
     output_path: Path = args.output_path
     output_dir = output_path.parent
     checkpoint_dir = output_dir / ".checkpoints"
@@ -199,7 +263,12 @@ def main() -> None:
     metadata_path = output_dir / "feature_names.json"
 
     session_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
-    faa_map, gff_map = index_genome_paths(args.genomes_dir)
+    
+    # Ưu tiên tìm tệp trong data/interim/annotations/, fallback về args.genomes_dir
+    faa_map, gff_map = index_genome_paths(
+        genomes_dir=args.genomes_dir,
+        annotation_dir=config.paths.annotation_dir
+    )
 
     if args.input_file and args.input_file.exists():
         with open(args.input_file, "r", encoding="utf-8") as f:
@@ -255,7 +324,10 @@ def main() -> None:
         except OSError:
             pass
 
-    logger.info(f"Hoàn tất xuất ma trận đặc trưng thành công! Samples: {total_samples}, Features: {num_features}")
+    logger.info(
+        f"Hoàn tất xuất ma trận đặc trưng thành công! "
+        f"Mẫu (Samples): {total_samples}, Đặc trưng (Features): {num_features}"
+    )
 
 
 if __name__ == "__main__":

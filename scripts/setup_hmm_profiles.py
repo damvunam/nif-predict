@@ -292,7 +292,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    hmm_directory = Path(settings.HMM_PROFILES_DIR)
+    hmm_directory = Path("data/hmm_profiles")
     setup_hmm_pipeline(hmm_directory, force_rebuild=args.rebuild_index)
 
 
