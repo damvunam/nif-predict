@@ -1,23 +1,48 @@
+# Python environments
 .venv/
 venv/
 env/
+
+# Python artifacts
 __pycache__/
 *.pyc
 *.egg-info/
 .build/
 dist/
 
+# Test and coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE and operating system
 .vscode/
 .idea/
 .DS_Store
+
+# Environment variables
 .env
+
+# Generated outputs
 logs/*
 results/
 annotation/
-dinh_huong/
-
-# MLOps Data Governance: Chặn toàn bộ data/, chỉ mở lại .gitkeep và .dvc
+docs/
+# MLOps Data Governance:
+# Chặn dữ liệu trong data/, chỉ theo dõi các file được cho phép.
 data/*
+
+# DVC metadata và placeholder
 !data/**/.gitkeep
 !data/**/*.dvc
+
+# Danh sách accession
 !data/batch_accessions.txt
+
+# Label manifest chính thức
+!data/labels/
+data/labels/*
+!data/labels/label_manifest.csv

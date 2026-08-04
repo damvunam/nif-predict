@@ -28,21 +28,27 @@ stages:
     outs:
       - data/processed/feature_matrix.parquet
 
-  # Stage 4: Phân tích EDA & Gán nhãn dữ liệu (Labeled Dataset)
-  eda_and_labeling:
-    cmd: python scripts/eda_and_labeling.py
+  # Stage 4: Gán nhãn từ manifest độc lập (EDA là stage riêng trong task sau)
+  label_dataset:
+    cmd: python scripts/label_dataset.py
     deps:
-      - scripts/eda_and_labeling.py
+      - scripts/label_dataset.py
+      - nifpredict/data/labeling.py
       - data/processed/feature_matrix.parquet
+      - data/labels/label_manifest.csv
     outs:
-      - data/processed/labeled_dataset.csv
-      - results/eda/eda_feature_stats.csv
+      - data/processed/labeled_dataset.parquet
+      - data/processed/training_dataset.parquet
+    metrics:
+      - results/labeling/label_validation_report.json:
+          cache: false
 
   # Stage 5: Dự đoán khả năng cố định đạm (Inference/Evaluation)
   predict:
-    cmd: python scripts/predict.py --file data/processed/labeled_dataset.csv
+    cmd: python scripts/predict.py --file data/batch_accessions.txt
     deps:
       - scripts/predict.py
-      - data/processed/labeled_dataset.csv
+      - data/batch_accessions.txt
     outs:
-      - data/processed/predictions
+      - results/bnf_prediction_summary.json
+      - results/bnf_prediction_summary.csv
