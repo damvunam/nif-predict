@@ -8,7 +8,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from nifpredict.data.labeling import (
+from nifpredict.labeling import (
     DEFAULT_EVIDENCE_SOURCES,
     LabelingValidationError,
     run_labeling_pipeline,

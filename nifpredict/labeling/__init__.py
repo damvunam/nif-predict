@@ -1,10 +1,6 @@
-"""Backward-compatible imports for the labeling API.
+"""Public API for independent-manifest labeling."""
 
-New code should import from ``nifpredict.labeling``.
-This module preserves the previous public import path.
-"""
-
-from nifpredict.labeling import (
+from .schema import (
     ACCESSION_PATTERN,
     CONTRACT_VERSION,
     DATASET_ROLES,
@@ -17,13 +13,15 @@ from nifpredict.labeling import (
     REQUIRED_VALUE_COLUMNS,
     TARGET_LABELS,
     LabelingResult,
-    LabelingValidationError,
+)
+from .service import (
     build_labeled_datasets,
     read_table,
     run_labeling_pipeline,
     write_report,
     write_table,
 )
+from .validation import LabelingValidationError
 
 __all__ = [
     "ACCESSION_PATTERN",

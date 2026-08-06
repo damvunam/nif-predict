@@ -1,0 +1,4 @@
+accession_id,nifH_count,nifD_count,nifK_count,cluster_score
+GCF_000000001.1,1,1,1,0.95
+GCF_000000002.1,0,0,0,0.05
+GCF_000000003.1,1,1,1,0.88

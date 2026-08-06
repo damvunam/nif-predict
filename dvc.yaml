@@ -33,7 +33,10 @@ stages:
     cmd: python scripts/label_dataset.py
     deps:
       - scripts/label_dataset.py
-      - nifpredict/data/labeling.py
+      - nifpredict/labeling/__init__.py
+      - nifpredict/labeling/schema.py
+      - nifpredict/labeling/validation.py
+      - nifpredict/labeling/service.py
       - data/processed/feature_matrix.parquet
       - data/labels/label_manifest.csv
     outs:
