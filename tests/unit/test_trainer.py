@@ -10,7 +10,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC
 
-from nifpredict.models.trainer import (
+from nifpredict.models import (
     LABEL_MAPPING,
     TrainingDataError,
     build_classifier,
