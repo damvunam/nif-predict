@@ -1,0 +1,4 @@
+assembly_accession,organism_name,strain,target_label,evidence_tier,evidence_source,evidence_reference,taxonomy_group,source_genome_id,dataset_role,label_curator,label_date,notes
+GCF_000000001.1,Fixture diazotroph A,strain-A,positive,A,literature,doi:10.0000/fixture-a,Proteobacteria,GCF_000000001.1,train_candidate,test-curator,2026-08-01,offline fixture
+GCF_000000002.1,Fixture non-diazotroph B,strain-B,negative,B,curated_database,fixture:negative-control,Proteobacteria,GCF_000000002.1,train_candidate,test-curator,2026-08-01,offline fixture
+GCF_000000003.1,Fixture diazotroph C,strain-C,positive,A,experimental_record,fixture:experimental-record,Cyanobacteria,GCF_000000003.1,train_candidate,test-curator,2026-08-01,offline fixture
