@@ -1,8 +1,7 @@
 # NifPredict: Genome-Based Nitrogen Fixation Prediction
 
-> A bioinformatics project in a master's thesis
-
----
+A bioinformatics project in a master's thesis
+Year: 2026-2027
 
 ## Table of Contents
 
@@ -31,7 +30,6 @@
 * [Citation](#citation)
 * [License](#license)
 
----
 
 ## Overview
 
@@ -47,47 +45,22 @@ Suggested points:
 
 TODO
 
----
 
 ## Developments
 
-<!-- Add important project milestones chronologically. -->
-
-* **2026-XX-XX** — Initial development of NifPredict.
-* **2026-XX-XX** — TODO
-* **2026-XX-XX** — TODO
-
----
+* Jul 25, 2026: First working version
 
 ## Installation & Requirements
 
 ### 1. Requirements
 
-* Python >= TODO
-* HMMER
-* TODO
-
-### 2. Installation
+Install the required Python packages using pip:
 
 ```bash
-git clone <repository-url>
-cd nif-predict
+pip install biopython numpy pandas scipy scikit-learn pyhmmer matplotlib pyyaml joblib pyarrow tqdm requests
+``` 
 
-python -m venv .venv
-source .venv/bin/activate
-
-pip install -e .
-```
-
-### 3. Verify installation
-
-```bash
-# TODO
-```
-
----
-
-## Project Structure
+### 2. Project structure
 
 ```text
 nif-predict/
@@ -109,212 +82,48 @@ nif-predict/
 └── README.md
 ```
 
-<!-- Explain important directories when necessary. -->
+## Usage
 
----
+### 1. Data Acquisition
 
-# Usage
+currently being finalized...
 
-## 1. Data Acquisition
+### 2. Genome Annotation
 
-<!--
-How are bacterial genomes obtained?
-What input identifiers are supported?
-Where are downloaded genomes stored?
--->
+currently being finalized...
 
-```bash
-# TODO
-```
+### 3. Feature Extraction
 
----
+currently being finalized...
 
-## 2. Genome Annotation
+### 4. Dataset Labeling
 
-<!--
-Describe the HMM-based annotation workflow.
--->
+currently being finalized...
 
-```bash
-# TODO
-```
+### 5. Model Training
 
----
+currently being finalized...
 
-## 3. Feature Extraction
+### 6. Model Evaluation
 
-<!--
-Describe how genome-level features are generated.
--->
+currently being finalized...
 
-```bash
-# TODO
-```
+## Methodology
 
----
+### 1. Genome Data Acquisition
 
-## 4. Dataset Labeling
+continue
 
-<!--
-Describe label manifest, validation, and training-ready datasets.
--->
+## All-Atom Representation
 
-```bash
-# TODO
-```
+countinue
 
----
+### Key Changes
 
-## 5. Model Training
+countinue
 
-<!--
-Current supported models:
-- Logistic Regression
-- Random Forest
-- Support Vector Machine
--->
+### Usage
 
-```bash
-# TODO
-```
+countinue
 
----
-
-## 6. Model Evaluation
-
-<!--
-Cross-validation
-Metrics
-Model comparison
-Leakage control
--->
-
-```bash
-# TODO
-```
-
----
-
-# Methodology
-
-## 1. Nif Gene Detection
-
-<!--
-Explain:
-- HMM profiles
-- nif genes
-- detection criteria
--->
-
-TODO
-
----
-
-## 2. Gene Organization and Synteny
-
-<!--
-Explain how genomic organization contributes to prediction.
--->
-
-TODO
-
----
-
-## 3. Feature Engineering
-
-<!--
-Explain biological/genomic features used by NifPredict.
--->
-
-TODO
-
----
-
-## 4. Machine Learning
-
-<!--
-Explain:
-- classification problem
-- supported algorithms
-- why multiple algorithms are compared
--->
-
-TODO
-
----
-
-## 5. Model Evaluation
-
-<!--
-Explain:
-- cross-validation strategy
-- evaluation metrics
-- leakage prevention
-- model selection
--->
-
-TODO
-
----
-
-# Current Status
-
-<!--
-Keep this section synchronized with the actual implementation.
-Do not document features that do not exist yet.
--->
-
-### Implemented
-
-* [ ] Genome acquisition
-* [ ] HMM-based annotation
-* [ ] Feature extraction
-* [ ] Dataset labeling
-* [ ] Model training
-* [ ] Cross-validation
-* [ ] Model evaluation
-
-### In Development
-
-* [ ] TODO
-
----
-
-# Limitations
-
-<!--
-Document scientific and technical limitations honestly.
-
-Examples to consider later:
-- Genomic potential vs experimentally validated nitrogen fixation
-- Assembly quality
-- Incomplete nif clusters
-- Dataset size/diversity
-- Label quality
--->
-
-TODO
-
----
-
-# Roadmap
-
-* [ ] TODO
-* [ ] TODO
-* [ ] TODO
-
----
-
-# Citation
-
-If you use NifPredict in your research, please cite:
-
-```text
-TODO
-```
-
----
-
-# License
-
-TODO
+#### Notes:
