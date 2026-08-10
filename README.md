@@ -48,7 +48,7 @@ TODO
 
 ## Developments
 
-* Jul 25, 2026: First working version
+* *Jul 25, 2026*: First working version
 
 ## Installation & Requirements
 
