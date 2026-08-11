@@ -20,6 +20,13 @@ from .service import (
     TrainingWorkflowResult,
     run_training_workflow,
 )
+from .tracking import (
+    DEFAULT_EXPERIMENT_NAME,
+    MLflowTrackingConfig,
+    MLflowTrackingResult,
+    track_completed_training_run,
+    write_tracking_receipt,
+)
 
 __all__ = [
     "MODEL_METADATA_SCHEMA_VERSION",
@@ -27,6 +34,9 @@ __all__ = [
     "RUN_ARTIFACT_FILENAMES",
     "TRAINING_RUN_SCHEMA_VERSION",
     "AtomicTrainingOutputs",
+    "DEFAULT_EXPERIMENT_NAME",
+    "MLflowTrackingConfig",
+    "MLflowTrackingResult",
     "RefitArtifactResult",
     "TrainingArtifactError",
     "TrainingWorkflowConfig",
@@ -35,5 +45,7 @@ __all__ = [
     "fingerprint_features",
     "refit_selected_candidate",
     "run_training_workflow",
+    "track_completed_training_run",
     "validate_run_name",
+    "write_tracking_receipt",
 ]
