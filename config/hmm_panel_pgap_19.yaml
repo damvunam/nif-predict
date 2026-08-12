@@ -1,0 +1,217 @@
+schema_version: 1
+
+panel:
+  id: pgap_nitrogenase_19_0
+  provider: NCBI
+  release_name: "hmm_PGAP/19.0"
+  release_date: "2026-01-22"
+  registry_url: "https://ftp.ncbi.nlm.nih.gov/hmm/19.0/hmm_PGAP.tsv"
+  model_base_url: "https://ftp.ncbi.nlm.nih.gov/hmm/19.0/hmm_PGAP.HMM"
+  seed_base_url: "https://ftp.ncbi.nlm.nih.gov/hmm/19.0/hmm_PGAP.SEED"
+  cutoff_policy: trusted
+  normalized_with: "HMMER 3.4"
+
+models:
+  - role: nifD
+    accession: TIGR01282.1
+    source_identifier: TIGR01282
+    hmm_name: nifD
+    gene_symbols: [nifD]
+    hmm_length: 466
+    sequence_cutoff: 653.55
+    domain_cutoff: 653.55
+    noise_cutoff: 503.05
+    family_type: equivalog
+    product: nitrogenase molybdenum-iron protein alpha chain
+    seed_sequence_count: 16
+    checksums:
+      hmm_raw_sha256: d7bb0e2ffc7dd79f30336bc2283ae2b1d7aea29d144b8a28f50b11c641a65a55
+      hmmconvert_sha256: bafa89a5fb4bc026f0fb03acc72f3f17b62fe99ae7ad33aec6c202ea11d83d52
+      seed_raw_sha256: ab08fead489ce543114b95284541d33064f4c14ed882b32f58d19d757436a331
+
+  - role: nifE
+    accession: TIGR01283.1
+    source_identifier: TIGR01283
+    hmm_name: nifE
+    gene_symbols: [nifE]
+    hmm_length: 459
+    sequence_cutoff: 505.1
+    domain_cutoff: 505.1
+    noise_cutoff: 412.85
+    family_type: equivalog
+    product: nitrogenase iron-molybdenum cofactor biosynthesis protein NifE
+    seed_sequence_count: 11
+    checksums:
+      hmm_raw_sha256: 2cdb417418ed34833d5cedea2e736f5544bc3f98a619909d1ccef50bf9f33913
+      hmmconvert_sha256: 43640291ef4511b72574c2b255dee9e39e2425c8025727f00b453f2db3686e8c
+      seed_raw_sha256: 107bd4023fa7b98af71b50dd9b075498d074761b844f549fac31590bec592add
+
+  - role: nifN
+    accession: TIGR01285.1
+    source_identifier: TIGR01285
+    hmm_name: nifN
+    gene_symbols: [nifN]
+    hmm_length: 433
+    sequence_cutoff: 326.8
+    domain_cutoff: 326.8
+    noise_cutoff: 325.3
+    family_type: equivalog
+    product: nitrogenase iron-molybdenum cofactor biosynthesis protein NifN
+    seed_sequence_count: 5
+    checksums:
+      hmm_raw_sha256: 2c7a574905c5d008e6c099dac6bb82058271197495bfa110f4d9767c8cb5da3d
+      hmmconvert_sha256: 7eabc907af2081754a290b960d9d4faab371aa270a8ef1bd07ec77882a431f81
+      seed_raw_sha256: 50b83c8d037bc5a2b8b136859f48aab60e34266ebccf90e54e0247c82efb2707
+
+  - role: nifK
+    accession: TIGR01286.1
+    source_identifier: TIGR01286
+    hmm_name: nifK
+    gene_symbols: [nifK]
+    hmm_length: 516
+    sequence_cutoff: 427.3
+    domain_cutoff: 427.3
+    noise_cutoff: 414.5
+    family_type: equivalog
+    product: nitrogenase molybdenum-iron protein subunit beta
+    seed_sequence_count: 4
+    checksums:
+      hmm_raw_sha256: 4381fc8b7f3f52276cab4917dff26e57a00cd08ec9e3eec32fc2eebe9436f981
+      hmmconvert_sha256: e7001a56997d06e3852e7b48397a5a63d31feda579c9dc3acb6a36ee8fffa0ab
+      seed_raw_sha256: 46005f687ebd324acc2a8e2a562a541c82c82cdd5059ef3911c6344fae79efc9
+
+  - role: nitrogenase_reductase
+    accession: TIGR01287.1
+    source_identifier: TIGR01287
+    hmm_name: nifH
+    gene_symbols: [nifH, vnfH, anfH]
+    hmm_length: 275
+    sequence_cutoff: 394.35
+    domain_cutoff: 394.35
+    noise_cutoff: 261.05
+    family_type: equivalog
+    product: nitrogenase iron protein
+    seed_sequence_count: 10
+    checksums:
+      hmm_raw_sha256: c9230b6a197f2538af54181d4200838aa3afa8d70326669ccfeb256a3f6f8193
+      hmmconvert_sha256: 84679dd59371fc1b6a766ca69e09a1cdc122cc3228a5b5a0bff1d5370150b01e
+      seed_raw_sha256: 2280de60bac3e8062b2781ed0b92fc8943c5eacd99ccec00acb1559802473f10
+
+  - role: nifB
+    accession: TIGR01290.1
+    source_identifier: TIGR01290
+    hmm_name: nifB
+    gene_symbols: [nifB]
+    hmm_length: 441
+    sequence_cutoff: 343.65
+    domain_cutoff: 343.65
+    noise_cutoff: 222.2
+    family_type: equivalog
+    product: nitrogenase cofactor biosynthesis protein NifB
+    seed_sequence_count: 4
+    checksums:
+      hmm_raw_sha256: ba3f52a09c896dea98e8b6328650ade0b3c8a8a1b5bd963ae8bf7c856b6896db
+      hmmconvert_sha256: 29fbd4c10be5c18955d2667bfdb8191e4d6707512e7c2b16398f9da4c5b2db41
+      seed_raw_sha256: 97403044f78cbc7e62bf8fcf8dca07094341785eaadeb545ebbd09f6a43a0bcc
+
+  - role: vnfD
+    accession: TIGR01860.1
+    source_identifier: TIGR01860
+    hmm_name: VNFD
+    gene_symbols: [vnfD]
+    hmm_length: 461
+    sequence_cutoff: 823.1
+    domain_cutoff: 823.1
+    noise_cutoff: 822.85
+    family_type: equivalog
+    product: nitrogenase vanadium-iron protein, alpha chain
+    seed_sequence_count: 3
+    checksums:
+      hmm_raw_sha256: 96741a676923f67dea8c79656b35e913278d4cf90299179fa7d81b8e08b2f597
+      hmmconvert_sha256: 4dbca1c5810c76b323d2f03ffd8be9a1feaa0c731c46617082b5feee3838362a
+      seed_raw_sha256: 68a394ce39bd31c7bf018a66e21ad194baa47da4c1a8e56a0541715054709622
+
+  - role: anfD
+    accession: TIGR01861.1
+    source_identifier: TIGR01861
+    hmm_name: ANFD
+    gene_symbols: [anfD]
+    hmm_length: 513
+    sequence_cutoff: 873.8
+    domain_cutoff: 873.8
+    noise_cutoff: 873.55
+    family_type: equivalog
+    product: nitrogenase iron-iron protein, alpha chain
+    seed_sequence_count: 3
+    checksums:
+      hmm_raw_sha256: c362e3cecac62419c8e35d3e82971cc7f12efaf8d08750904e2e3c8dd788168b
+      hmmconvert_sha256: beec048a8de81489866936b8a00650c658a6a3363a8f2ed3798c7ddb98fc13e8
+      seed_raw_sha256: 42a3e2ed8d4062997b33d743161ea68179b90e0da656e7f16441e9fa65084856
+
+  - role: anfG
+    accession: TIGR02929.1
+    source_identifier: TIGR02929
+    hmm_name: anfG_nitrog
+    gene_symbols: [anfG]
+    hmm_length: 109
+    sequence_cutoff: 124.7
+    domain_cutoff: 124.7
+    noise_cutoff: 124.5
+    family_type: equivalog
+    product: Fe-only nitrogenase subunit delta
+    seed_sequence_count: 3
+    checksums:
+      hmm_raw_sha256: cd3f6eab57b6d79a96de2e1284944b1a8fa1effbe9f94afb8adebf32423dbe7f
+      hmmconvert_sha256: bf6e033e3d58562b8e02547b4f175ae31f1a52c815f593cdc8b8a205d524242b
+      seed_raw_sha256: 538ff05f9d42a876ec696e0385947e2d49da8a8912d1eecb9533f8ac30cf2880
+
+  - role: vnfG
+    accession: TIGR02930.1
+    source_identifier: TIGR02930
+    hmm_name: vnfG_nitrog
+    gene_symbols: [vnfG]
+    hmm_length: 109
+    sequence_cutoff: 141.7
+    domain_cutoff: 141.7
+    noise_cutoff: 122.35
+    family_type: equivalog
+    product: V-containing nitrogenase subunit delta
+    seed_sequence_count: 4
+    checksums:
+      hmm_raw_sha256: c301750879d4332cd04d0e82e2dbfd39ee074081376fd17ac4f88124f796ed44
+      hmmconvert_sha256: b91fa86006eee23c08087900aaa10b28bb1f12d6a60fc69ca49b42a6aa96ab41
+      seed_raw_sha256: 848d0da5f4f44384d4f5e3f8d97bd0f0c13925e90438d673d0e1ccd82432e748
+
+  - role: anfK
+    accession: TIGR02931.1
+    source_identifier: TIGR02931
+    hmm_name: anfK_nitrog
+    gene_symbols: [anfK]
+    hmm_length: 461
+    sequence_cutoff: 853.85
+    domain_cutoff: 853.85
+    noise_cutoff: 853.75
+    family_type: equivalog
+    product: Fe-only nitrogenase subunit beta
+    seed_sequence_count: 4
+    checksums:
+      hmm_raw_sha256: 2444a56845dbc0024f4913cb5d1389f92a3404d14b0fbf76d38a544ff28b92b6
+      hmmconvert_sha256: 60d1be4fac8ecb7d151fb6df842be957046cfbef34f0f40fbf3379535469b35e
+      seed_raw_sha256: 05bc690f3ce08f99ac0ade8c491de83a9ec93a7f762b7cc8b79d51373c28fc34
+
+  - role: vnfK
+    accession: TIGR02932.1
+    source_identifier: TIGR02932
+    hmm_name: vnfK_nitrog
+    gene_symbols: [vnfK]
+    hmm_length: 457
+    sequence_cutoff: 873.95
+    domain_cutoff: 873.95
+    noise_cutoff: 821.85
+    family_type: equivalog
+    product: V-containing nitrogenase subunit beta
+    seed_sequence_count: 4
+    checksums:
+      hmm_raw_sha256: 519dce734d31eaa9515c35b8084fa0c34351b651981db0a9f8acde19767fe5fd
+      hmmconvert_sha256: 03fd48a4f487eafa3a8e6d1463debfae109381260232680067d98ded510a2b77
+      seed_raw_sha256: 73ded98a928595cd777d9b21ffeb58248fbb3fdc70c5000250b0240f83fe797b
