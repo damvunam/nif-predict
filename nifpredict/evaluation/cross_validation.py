@@ -271,11 +271,7 @@ def run_grouped_cross_validation(
                 fold=fold,
             )
 
-            fold_seed = (
-                config.random_seed
-                + (repeat - 1) * config.n_splits
-                + (fold - 1)
-            )
+            fold_seed = config.random_seed + (repeat - 1) * config.n_splits + (fold - 1)
             training_result = train_classifier(
                 training_frame,
                 model_name=model_name,
@@ -283,9 +279,7 @@ def run_grouped_cross_validation(
                 imbalance_handling=config.imbalance_handling,
                 target_column=config.target_column,
             )
-            validation_features = validation_frame.loc[
-                :, training_result.feature_names
-            ]
+            validation_features = validation_frame.loc[:, training_result.feature_names]
             encoded_predictions = np.asarray(
                 training_result.estimator.predict(validation_features)
             )
@@ -329,9 +323,7 @@ def run_grouped_cross_validation(
                         ).sum()
                     ),
                     "validation_negative_count": int(
-                        (
-                            validation_frame[config.target_column] == negative_label
-                        ).sum()
+                        (validation_frame[config.target_column] == negative_label).sum()
                     ),
                     "validation_positive_count": int(
                         (
@@ -355,9 +347,7 @@ def run_grouped_cross_validation(
                         config.group_column: validation_frame[
                             config.group_column
                         ].to_numpy(),
-                        "true_label": validation_frame[
-                            config.target_column
-                        ].to_numpy(),
+                        "true_label": validation_frame[config.target_column].to_numpy(),
                         "predicted_label": predicted_labels,
                         "positive_probability": (
                             positive_probability
@@ -386,9 +376,7 @@ def run_grouped_cross_validation(
 
     expected_oof_rows = len(frame) * config.n_repeats
     for model_name in config.model_names:
-        model_oof = oof_predictions.loc[
-            oof_predictions["model_name"] == model_name
-        ]
+        model_oof = oof_predictions.loc[oof_predictions["model_name"] == model_name]
         if len(model_oof) != expected_oof_rows:
             raise RuntimeError(
                 f"Model '{model_name}' produced {len(model_oof)} OOF rows; "
