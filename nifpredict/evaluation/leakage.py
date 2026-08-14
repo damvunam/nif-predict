@@ -56,9 +56,7 @@ def validate_grouped_cv_input(
             + ", ".join(missing_columns)
         )
     if frame.columns.duplicated().any():
-        duplicates = sorted(
-            set(frame.columns[frame.columns.duplicated()].astype(str))
-        )
+        duplicates = sorted(set(frame.columns[frame.columns.duplicated()].astype(str)))
         raise GroupedCVValidationError(
             "Grouped CV dataset contains duplicate column name(s): "
             + ", ".join(duplicates)
@@ -94,9 +92,7 @@ def validate_grouped_cv_input(
         )
     if frame[accession_column].duplicated().any():
         duplicate_accessions = sorted(
-            frame.loc[
-                frame[accession_column].duplicated(keep=False), accession_column
-            ]
+            frame.loc[frame[accession_column].duplicated(keep=False), accession_column]
             .astype(str)
             .unique()
         )
@@ -123,9 +119,7 @@ def validate_grouped_cv_input(
         for label in LABEL_MAPPING
     }
     insufficient = {
-        label: count
-        for label, count in class_group_counts.items()
-        if count < n_splits
+        label: count for label, count in class_group_counts.items() if count < n_splits
     }
     if insufficient:
         details = ", ".join(
@@ -253,17 +247,13 @@ def validate_fold_manifest(
 
         for fold in sorted(expected_folds):
             validation_accessions = set(
-                repeat_rows.loc[
-                    repeat_rows["fold"] == fold, accession_column
-                ]
+                repeat_rows.loc[repeat_rows["fold"] == fold, accession_column]
             )
             validation_frame = frame.loc[
                 frame[accession_column].isin(validation_accessions)
             ]
             validation_groups = set(validation_frame[group_column])
-            training_frame = frame.loc[
-                ~frame[group_column].isin(validation_groups)
-            ]
+            training_frame = frame.loc[~frame[group_column].isin(validation_groups)]
             validate_fold_split(
                 training_frame,
                 validation_frame,
