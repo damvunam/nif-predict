@@ -27,6 +27,12 @@ def compute_neg_log10_evalue(evalue_series: pd.Series, epsilon: float = 1e-300) 
 
 
 class MarkerClusterExtractor:
+    CORE_FAMILY_ALIASES = {
+        "nifH": frozenset({"nifH", "PF00142", "nitrogenase_reductase"}),
+        "nifD": frozenset({"nifD", "PF00148"}),
+        "nifK": frozenset({"nifK", "PF02826"}),
+    }
+
     def __init__(
         self,
         core_pfams: Optional[Dict[str, str]] = None,
@@ -57,7 +63,13 @@ class MarkerClusterExtractor:
                 if "pfam_id" in df_hits.columns:
                     df_gene = df_hits[df_hits["pfam_id"] == pfam_id]
                 elif "gene_family" in df_hits.columns:
-                    df_gene = df_hits[df_hits["gene_family"].isin([pfam_id, gene_name])]
+                    accepted_families = self.CORE_FAMILY_ALIASES.get(
+                        gene_name,
+                        frozenset({pfam_id, gene_name}),
+                    )
+                    df_gene = df_hits[
+                        df_hits["gene_family"].isin(accepted_families)
+                    ]
                 else:
                     df_gene = pd.DataFrame()
             else:

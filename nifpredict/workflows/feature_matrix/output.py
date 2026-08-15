@@ -5,7 +5,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Mapping, Sequence
 
 import pandas as pd
 
@@ -95,6 +95,7 @@ def write_run_metadata(
     feature_frame: pd.DataFrame,
     requested_accessions: Sequence[str],
     failures: Dict[str, str],
+    source_provenance: Mapping[str, Any] | None = None,
 ) -> None:
     """Write feature names, counts, and failure details as JSON."""
     feature_names = get_feature_names(feature_frame)
@@ -107,6 +108,8 @@ def write_run_metadata(
         "failed_accessions": failures,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+    if source_provenance is not None:
+        metadata["source_provenance"] = dict(source_provenance)
 
     metadata_path.parent.mkdir(parents=True, exist_ok=True)
     with metadata_path.open("w", encoding="ascii") as handle:
