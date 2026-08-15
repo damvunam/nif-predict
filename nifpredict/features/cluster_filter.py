@@ -35,7 +35,13 @@ class GeneClusterResult(BaseModel):
 
 
 class ClusterFilter:
-    CORE_H_FAMILIES: Set[str] = {"nifH", "vnfH", "anfH", "PF00142"}
+    CORE_H_FAMILIES: Set[str] = {
+        "nifH",
+        "vnfH",
+        "anfH",
+        "PF00142",
+        "nitrogenase_reductase",
+    }
     CORE_D_FAMILIES: Set[str] = {"nifD", "vnfD", "anfD", "PF00148"}
     CORE_K_FAMILIES: Set[str] = {"nifK", "vnfK", "anfK", "PF02826"}
 
