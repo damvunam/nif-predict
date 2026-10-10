@@ -1,5 +1,5 @@
 
 # raw sequencing reads - never commit these
-nifpredict/resources/raw/
+resources/raw/
 *.fq.gz
 *.fastq.gz

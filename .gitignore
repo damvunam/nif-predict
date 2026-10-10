@@ -31,18 +31,47 @@ logs/*
 results/
 annotation/
 docs/
+
 # MLOps Data Governance:
-# Chặn dữ liệu trong data/, chỉ theo dõi các file được cho phép.
 data/*
+**/resources/*
+**/busco_downloads/
+
+# sequencing data
+*.fq
+*.fastq
+*.fq.gz
+*.fastq.gz
+*.fa
+*.fasta
+*.fna
+*.faa
+*.ffn
+*.gfa
+*.gff
+*.gff3
+*.gbk
+*.bam
+*.sam
+*.vcf
+
+# (Gemini)
+test_data/
+GEMINI.md
+plan.md
 
 # DVC metadata và placeholder
 !data/**/.gitkeep
 !data/**/*.dvc
 
-# Danh sách accession
+# accession
 !data/batch_accessions.txt
 
-# Label manifest chính thức
+# Label manifest
 !data/labels/
 data/labels/*
 !data/labels/label_manifest.csv
+# local only
+test_data/
+GEMINI.md
+plan.md
