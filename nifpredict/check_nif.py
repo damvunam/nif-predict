@@ -61,7 +61,14 @@ def download_nif_references(ref_path, log_path):
         return ref_path
 
     # 2. Download from UniProt REST
-    query = "(gene_exact:nifH OR gene_exact:nifD OR gene_exact:nifK) AND (reviewed:true)"
+    # FIX: gene_exact:nifH missed Swiss-Prot entries whose primary gene name carries a copy number
+    # (e.g. P00459 NIFH1_AZOVI = nifH1, Q9AKT4 NIFH2_PAEDU = nifH2); load_gene_map already accepts these
+    # query = "(gene_exact:nifH OR gene_exact:nifD OR gene_exact:nifK) AND (reviewed:true)"
+    query = (
+        "(gene_exact:nifH OR gene_exact:nifH1 OR gene_exact:nifH2 OR gene_exact:nifH3"
+        " OR gene_exact:nifD OR gene_exact:nifD1 OR gene_exact:nifD2"
+        " OR gene_exact:nifK OR gene_exact:nifK1 OR gene_exact:nifK2) AND (reviewed:true)"
+    )
     url = "https://rest.uniprot.org/uniprotkb/stream?format=fasta&query=" + urllib.parse.quote(query)
     write_log(log_path, f"Downloading references: {url}")
     try:
