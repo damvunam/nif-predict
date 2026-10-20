@@ -103,12 +103,16 @@ def load_gene_map(ref_path):
             gene = "other"
             for token in line.split():
                 if token.startswith("GN="):
-                    name = token[3:].lower()
+                    # FIX (W4f): compare case-sensitively. With .lower(), the animal nucleolar protein
+                    # MK67I (gene NIFK / Nifk / nifk, e.g. Q9BYG3 human) was counted as nifK
+                    # (7 of 26 "nifK" references in the 171-protein set). Bacterial gene names are nifH/nifD/nifK.
+                    # name = token[3:].lower()
+                    name = token[3:]
                     for g in NIF_GENES:
                         # FIX: was name.startswith(g) -> "nifHD" counted as nifH.
                         # Accept only the gene name plus an optional copy number (nifH, nifH1, nifH2).
                         # if name.startswith(g.lower()):
-                        if name == g.lower() or (name.startswith(g.lower()) and name[len(g):].isdigit()):
+                        if name == g or (name.startswith(g) and name[len(g):].isdigit()):
                             gene = g
             gene_map[seq_id] = gene
     return gene_map
