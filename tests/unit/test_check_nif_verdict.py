@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+import nifpredict.check_nif as check_nif
 from nifpredict.check_nif import (
     is_nif_present_assembly,
     is_nif_present_reads,
@@ -60,13 +61,14 @@ def test_summarize_tblastn_keeps_highest_bitscore_not_first_row(tmp_path: Path) 
     hits = _write_tsv(
         tmp_path / "hits.tsv",
         [
-            # qseqid, sseqid, pident, length, qlen, evalue, bitscore, sstart, send
-            ("ref_nifH_1", "contig_1", "80.0", "280", "290", "1e-100", "400.0", "100", "940"),
-            ("ref_nifH_2", "contig_2", "90.0", "285", "290", "1e-150", "550.0", "200", "1055"),
-            ("ref_nifH_1", "contig_3", "85.0", "282", "290", "1e-120", "480.0", "300", "1146"),
+            # qseqid, sseqid, pident, length, qlen, evalue, bitscore, sstart, send, qstart, qend
+            ("ref_nifH_1", "contig_1", "80.0", "280", "290", "1e-100", "400.0", "100", "940", "1", "280"),
+            ("ref_nifH_2", "contig_2", "90.0", "285", "290", "1e-150", "550.0", "200", "1055", "1", "285"),
+            ("ref_nifH_1", "contig_3", "85.0", "282", "290", "1e-120", "480.0", "300", "1146", "1", "282"),
         ],
     )
     best = summarize_tblastn(hits, GENE_MAP)
+    assert best is not None
     assert set(best.keys()) == {"nifH"}
     assert best["nifH"]["ref"] == "ref_nifH_2"
     assert best["nifH"]["contig"] == "contig_2"
@@ -79,28 +81,56 @@ def test_summarize_tblastn_equal_bitscore_keeps_first_seen(tmp_path: Path) -> No
     hits = _write_tsv(
         tmp_path / "hits.tsv",
         [
-            ("ref_nifH_1", "contig_first", "80.0", "280", "290", "1e-100", "500.0", "100", "940"),
-            ("ref_nifH_2", "contig_second", "95.0", "290", "290", "1e-100", "500.0", "200", "1070"),
+            ("ref_nifH_1", "contig_first", "80.0", "280", "290", "1e-100", "500.0", "100", "940", "1", "280"),
+            ("ref_nifH_2", "contig_second", "95.0", "290", "290", "1e-100", "500.0", "200", "1070", "1", "290"),
         ],
     )
     best = summarize_tblastn(hits, GENE_MAP)
+    assert best is not None
     assert best["nifH"]["ref"] == "ref_nifH_1"
     assert best["nifH"]["contig"] == "contig_first"
 
 
-def test_summarize_tblastn_coverage_calculation(tmp_path: Path) -> None:
-    """A3: coverage == int(length) / int(qlen), e.g., 287 / 291."""
-    # NOTE: coverage is computed as int(length) / int(qlen), where length is the BLAST alignment
-    # length (which can include gaps) rather than (qend - qstart + 1), so gapped alignments can
-    # slightly overestimate query coverage or exceed 1.0.
+def test_summarize_tblastn_coverage_uses_query_span_not_alignment_length(tmp_path: Path) -> None:
+    """A3: length=300, qlen=291, qstart=5, qend=291 -> coverage == (291 - 5 + 1) / 291 != 300 / 291."""
     hits = _write_tsv(
         tmp_path / "hits.tsv",
         [
-            ("ref_nifH_1", "contig_1", "96.167", "287", "291", "1e-160", "565.0", "1000", "1860"),
+            ("ref_nifH_1", "contig_1", "96.167", "300", "291", "1e-160", "565.0", "1000", "1860", "5", "291"),
         ],
     )
     best = summarize_tblastn(hits, GENE_MAP)
-    assert best["nifH"]["coverage"] == 287 / 291
+    assert best is not None
+    assert best["nifH"]["coverage"] == (291 - 5 + 1) / 291
+    assert best["nifH"]["coverage"] != 300 / 291
+    assert best["nifH"]["aln_length"] == 300
+    assert best["nifH"]["qstart"] == 5
+    assert best["nifH"]["qend"] == 291
+
+
+@pytest.mark.parametrize(
+    ("qend", "expected_verdict"),
+    [
+        ("210", "PRESENT (nifHDK clustered)"),  # (210 - 1 + 1) / 300 == 0.7 -> passes
+        ("209", "PARTIAL - check manually"),    # (209 - 1 + 1) / 300 < 0.7 -> weak
+    ],
+)
+def test_summarize_tblastn_coverage_boundary_through_file_to_verdict(
+    tmp_path: Path, qend: str, expected_verdict: str
+) -> None:
+    """A3b: Boundary coverage 0.7 via TSV file -> summarize_tblastn -> is_nif_present_assembly."""
+    hits = _write_tsv(
+        tmp_path / "boundary.tsv",
+        [
+            ("ref_nifH_1", "contig_1", "85.0", "290", "290", "1e-150", "500.0", "100", "970", "1", "290"),
+            ("ref_nifD_1", "contig_1", "85.0", "480", "480", "1e-180", "600.0", "1100", "2540", "1", "480"),
+            ("ref_nifK_1", "contig_1", "85.0", "250", "300", "1e-120", "450.0", "2700", "3330", "1", qend),
+        ],
+    )
+    best = summarize_tblastn(hits, GENE_MAP)
+    assert best is not None
+    verdict, _ = is_nif_present_assembly(best)
+    assert verdict == expected_verdict
 
 
 def test_summarize_tblastn_reverse_strand_normalizes_start_end(tmp_path: Path) -> None:
@@ -108,10 +138,11 @@ def test_summarize_tblastn_reverse_strand_normalizes_start_end(tmp_path: Path) -
     hits = _write_tsv(
         tmp_path / "hits.tsv",
         [
-            ("ref_nifD_1", "contig_1", "85.0", "450", "480", "1e-150", "600.0", "5000", "4000"),
+            ("ref_nifD_1", "contig_1", "85.0", "450", "480", "1e-150", "600.0", "5000", "4000", "1", "450"),
         ],
     )
     best = summarize_tblastn(hits, GENE_MAP)
+    assert best is not None
     assert best["nifD"]["start"] == 4000
     assert best["nifD"]["end"] == 5000
 
@@ -121,24 +152,26 @@ def test_summarize_tblastn_ignores_other_and_unmapped_qseqid(tmp_path: Path) -> 
     hits = _write_tsv(
         tmp_path / "hits.tsv",
         [
-            ("ref_other", "contig_1", "99.0", "290", "290", "1e-180", "700.0", "100", "970"),
-            ("ref_unknown", "contig_1", "99.0", "290", "290", "1e-180", "700.0", "1000", "1870"),
+            ("ref_other", "contig_1", "99.0", "290", "290", "1e-180", "700.0", "100", "970", "1", "290"),
+            ("ref_unknown", "contig_1", "99.0", "290", "290", "1e-180", "700.0", "1000", "1870", "1", "290"),
         ],
     )
     assert summarize_tblastn(hits, GENE_MAP) == {}
 
 
-def test_summarize_tblastn_ignores_short_rows_without_raising(tmp_path: Path) -> None:
-    """A6: Rows with fewer than 9 columns are skipped without raising."""
+def test_summarize_tblastn_ignores_9_and_10_col_rows_when_11_col_row_exists(tmp_path: Path) -> None:
+    """A6: 9-column and 10-column rows are skipped without raising when an 11-column row is present."""
     hits = _write_tsv(
         tmp_path / "hits.tsv",
         [
-            ("ref_nifH_1", "contig_1", "90.0", "280", "290", "1e-100", "500.0", "100"),  # 8 cols
+            ("ref_nifH_1", "contig_1", "90.0", "280", "290", "1e-100", "500.0", "100", "940"),  # 9 cols
+            ("ref_nifD_1", "contig_1", "90.0", "450", "480", "1e-150", "600.0", "1000", "2350", "1"),  # 10 cols
             ("only_one_col",),
-            ("ref_nifK_1", "contig_1", "75.0", "480", "500", "1e-140", "520.0", "2000", "3440"),
+            ("ref_nifK_1", "contig_1", "75.0", "480", "500", "1e-140", "520.0", "2000", "3440", "1", "480"),  # 11 cols
         ],
     )
     best = summarize_tblastn(hits, GENE_MAP)
+    assert best is not None
     assert set(best.keys()) == {"nifK"}
 
 
@@ -147,6 +180,47 @@ def test_summarize_tblastn_empty_file_returns_empty_dict(tmp_path: Path) -> None
     hits = tmp_path / "empty.tsv"
     hits.write_text("")
     assert summarize_tblastn(hits, GENE_MAP) == {}
+
+
+def test_summarize_tblastn_old_9_column_only_file_returns_none_and_prints_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A8: File containing only 9-column rows (old format) returns None and prints an Error line."""
+    hits = _write_tsv(
+        tmp_path / "old_format.tsv",
+        [
+            ("ref_nifH_1", "contig_1", "90.0", "280", "290", "1e-100", "500.0", "100", "940"),
+            ("ref_nifD_1", "contig_1", "85.0", "450", "480", "1e-150", "600.0", "1000", "2350"),
+        ],
+    )
+    res = summarize_tblastn(hits, GENE_MAP)
+    assert res is None
+    out_lines = capsys.readouterr().out.splitlines()
+    assert any(line.startswith("Error: tblastn hits file has no row with qstart/qend") for line in out_lines)
+
+
+def test_summarize_tblastn_blank_lines_only_returns_empty_dict(tmp_path: Path) -> None:
+    """A7b (Claude, W13 review): a file with only blank lines is 'no hits' ({}), not the old 9-column format (None)."""
+    hits = tmp_path / "blank.tsv"
+    hits.write_text("\n\n\n")
+    assert summarize_tblastn(hits, GENE_MAP) == {}
+
+
+def test_run_tblastn_requests_qstart_qend_columns(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A9 (Claude, W13 review): run_tblastn asks tblastn for the 11 columns summarize_tblastn needs, in order."""
+    calls: list[list[str]] = []
+
+    def _fake_run_cmd(cmd: list[str], log_path: str) -> bool:
+        calls.append(cmd)
+        return True
+
+    monkeypatch.setattr(check_nif, "run_cmd", _fake_run_cmd)
+    out = check_nif.run_tblastn("ref.faa", "asm.fasta", str(tmp_path), 2, str(tmp_path / "log.txt"))
+    assert out == str(tmp_path / "tblastn_hits.tsv")
+    tblastn_cmd = calls[-1]
+    assert tblastn_cmd[0] == "tblastn"
+    outfmt = tblastn_cmd[tblastn_cmd.index("-outfmt") + 1]
+    assert outfmt == "6 qseqid sseqid pident length qlen evalue bitscore sstart send qstart qend"
 
 
 # ==============================================================================
@@ -322,16 +396,17 @@ def test_is_nif_present_assembly_overlap_check_precedes_cluster_check() -> None:
 
 
 def test_end_to_end_tblastn_file_to_clustered_verdict(tmp_path: Path) -> None:
-    """B9: End-to-end from TSV file -> summarize_tblastn -> is_nif_present_assembly -> 'PRESENT (nifHDK clustered)'."""
+    """B9: End-to-end from 11-column TSV file -> summarize_tblastn -> is_nif_present_assembly -> 'PRESENT (nifHDK clustered)'."""
     hits = _write_tsv(
         tmp_path / "operon_hits.tsv",
         [
-            ("ref_nifH_1", "contig_28", "83.6", "287", "293", "1e-150", "510.0", "79284", "80144"),
-            ("ref_nifD_1", "contig_28", "64.9", "482", "487", "1e-180", "620.0", "80244", "81690"),
-            ("ref_nifK_1", "contig_28", "53.7", "514", "530", "1e-160", "540.0", "81790", "83332"),
+            ("ref_nifH_1", "contig_28", "83.6", "287", "293", "1e-150", "510.0", "79284", "80144", "1", "287"),
+            ("ref_nifD_1", "contig_28", "64.9", "482", "487", "1e-180", "620.0", "80244", "81690", "1", "482"),
+            ("ref_nifK_1", "contig_28", "53.7", "514", "530", "1e-160", "540.0", "81790", "83332", "1", "514"),
         ],
     )
     best = summarize_tblastn(hits, GENE_MAP)
+    assert best is not None
     verdict, reasons = is_nif_present_assembly(best)
     assert verdict == "PRESENT (nifHDK clustered)"
     assert len(reasons) == 3

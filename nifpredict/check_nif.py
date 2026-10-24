@@ -132,9 +132,18 @@ def run_tblastn(ref_path, assembly_path, out_dir, threads, log_path):
 
     # 2. Search
     hits_path = os.path.join(out_dir, "tblastn_hits.tsv")
+    # FIX (W13): append qstart qend so summarize_tblastn computes true query span coverage instead of alignment length / qlen
+    # cmd = [
+    #     "tblastn", "-query", ref_path, "-db", db_prefix,
+    #     "-outfmt", "6 qseqid sseqid pident length qlen evalue bitscore sstart send",
+    #     "-evalue", "1e-5",
+    #     "-max_target_seqs", "5",
+    #     "-num_threads", str(threads),
+    #     "-out", hits_path,
+    # ]
     cmd = [
         "tblastn", "-query", ref_path, "-db", db_prefix,
-        "-outfmt", "6 qseqid sseqid pident length qlen evalue bitscore sstart send",
+        "-outfmt", "6 qseqid sseqid pident length qlen evalue bitscore sstart send qstart qend",
         "-evalue", "1e-5",
         "-max_target_seqs", "5",
         "-num_threads", str(threads),
@@ -150,29 +159,52 @@ def summarize_tblastn(hits_path, gene_map):
     Keeps the best hit (highest bitscore) per gene.
 
     Returns:
-        dict: {gene: {"contig", "pident", "coverage", "start", "end", "ref"}} or {} if no hits.
+        dict: {gene: {"ref", "contig", "pident", "coverage", "start", "end",
+              "bitscore", "qstart", "qend", "aln_length"}}, {} if no hits, or
+              None if non-empty file has no 11-column rows (old format).
     """
     best = {}
+    has_nonempty_row = False
+    has_11col_row = False
     with open(hits_path) as f:
         for row in csv.reader(f, delimiter="\t"):
-            if len(row) < 9:
+            if not row or not any(cell.strip() for cell in row):
                 continue
-            qseqid, sseqid, pident, length, qlen, evalue, bitscore, sstart, send = row[:9]
+            has_nonempty_row = True
+            # FIX (W13): require 11 columns (including qstart, qend) and compute true query span coverage
+            # if len(row) < 9:
+            #     continue
+            # qseqid, sseqid, pident, length, qlen, evalue, bitscore, sstart, send = row[:9]
+            if len(row) < 11:
+                continue
+            has_11col_row = True
+            qseqid, sseqid, pident, length, qlen, evalue, bitscore, sstart, send, qstart, qend = row[:11]
             gene = gene_map.get(qseqid, "other")
             if gene not in NIF_GENES:
                 continue
             bitscore = float(bitscore)
             if gene in best and best[gene]["bitscore"] >= bitscore:
                 continue
+            # FIX (W13): coverage is the fraction of the reference query covered by [qstart, qend],
+            # not alignment length / qlen (which includes gaps and can exceed 1.0)
+            # "coverage": int(length) / int(qlen),
+            qstart_int = int(qstart)
+            qend_int = int(qend)
             best[gene] = {
                 "ref": qseqid,
                 "contig": sseqid,
                 "pident": float(pident),
-                "coverage": int(length) / int(qlen),
+                "coverage": (qend_int - qstart_int + 1) / int(qlen),
                 "start": min(int(sstart), int(send)),
                 "end": max(int(sstart), int(send)),
                 "bitscore": bitscore,
+                "qstart": qstart_int,
+                "qend": qend_int,
+                "aln_length": int(length),
             }
+    if has_nonempty_row and not has_11col_row:
+        print(f"Error: tblastn hits file has no row with qstart/qend (old 9-column format?): {hits_path}")
+        return None
     return best
 
 
@@ -343,7 +375,14 @@ if __name__ == "__main__":
             write_log(log_path, f"Mode: assembly ({args.assembly})")
             hits_path = run_tblastn(ref_path, args.assembly, out_dir, args.threads, log_path)
             if hits_path:
-                verdict, reasons = is_nif_present_assembly(summarize_tblastn(hits_path, gene_map))
+                # FIX (W13): check if summarize_tblastn returned None (invalid/old 9-column format) before calling is_nif_present_assembly
+                # verdict, reasons = is_nif_present_assembly(summarize_tblastn(hits_path, gene_map))
+                best_hits = summarize_tblastn(hits_path, gene_map)
+                if best_hits is None:
+                    write_log(log_path, "Error: could not summarize tblastn hits - no VERDICT")
+                    hits_path = None
+                else:
+                    verdict, reasons = is_nif_present_assembly(best_hits)
         else:
             if args.assembly:
                 write_log(log_path, f"Warning: assembly not found ({args.assembly}), falling back to reads")
