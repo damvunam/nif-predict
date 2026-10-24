@@ -5,6 +5,8 @@ import os
 import json
 import glob
 
+import contig_stats
+
 def peek_read_length(fastq_path, n_reads=100):
     """
     Estimates average read length by reading the first N reads of a fastq file.
@@ -120,6 +122,63 @@ def check_qc_report(report_path, min_q30_rate=0.8, max_duplication_rate=0.2):
     if not duplication_ok:
         print(f"  - Duplication rate too high ({duplication_rate} > {max_duplication_rate})")
     return False
+
+
+def get_fasta_total_length(fasta_path):
+    """Calculates total bases across all records in a FASTA file.
+
+    Args:
+        fasta_path: Path to the FASTA file (str).
+
+    Returns:
+        Total length in bases (int), or None if unreadable or empty.
+    """
+    # 1. Parse FASTA records using contig_stats
+    try:
+        records = contig_stats.parse_fasta(fasta_path)
+    except OSError as e:
+        print(f"Error: Cannot read FASTA file {fasta_path}: {e}")
+        return None
+
+    # 2. Validate records and sum lengths
+    if not records:
+        print(f"Error: No FASTA records found in {fasta_path}")
+        return None
+
+    return sum(r["length"] for r in records)
+
+
+def get_read_coverage(fastp_json_path, genome_size):
+    """Computes read coverage from fastp JSON summary and genome size.
+
+    Args:
+        fastp_json_path: Path to fastp JSON report (str).
+        genome_size: Genome size in bp (int).
+
+    Returns:
+        Dict with keys 'total_bases' (int), 'genome_size' (int), 'coverage' (float),
+        or None on invalid input or file/JSON error.
+    """
+    # 1. Validate genome_size
+    if genome_size is None or genome_size <= 0:
+        print(f"Error: Invalid genome_size for coverage calculation: {genome_size}")
+        return None
+
+    # 2. Load fastp JSON and extract total_bases after filtering
+    try:
+        with open(fastp_json_path) as f:
+            data = json.load(f)
+        total_bases = int(data["summary"]["after_filtering"]["total_bases"])
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+        print(f"Error: Cannot read total_bases from {fastp_json_path}: {e}")
+        return None
+
+    # 3. Compute raw coverage (rounding is done by the caller when printing)
+    return {
+        "total_bases": total_bases,
+        "genome_size": int(genome_size),
+        "coverage": total_bases / genome_size,
+    }
     
 
 def run_quast(assembly_path, out_dir, threads=10):
