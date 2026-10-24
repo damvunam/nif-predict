@@ -72,7 +72,7 @@ def get_sample_raw_reads(data_dir, sample_name):
     if found_files is None:
         return None, None
 
-    # FIX: filter by exact sample prefix followed by '_', '.' or '-' to avoid prefix collision (e.g. G1 matching G1X_*)
+    # FIX: filter by exact sample prefix followed by '_', '.' or '-' to avoid prefix collision (e.g. X1 matching X13_*)
     matched_files = []
     for file_path in found_files:
         base_name = os.path.basename(file_path)
@@ -421,7 +421,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Run complete WGS pipeline for a sample (QC, assembly, stats, identity check)."
     )
-    parser.add_argument("-s", "--sample", required=True, help="Sample identifier (e.g. G1X, X35)")
+    parser.add_argument("-s", "--sample", required=True, help="Sample identifier (e.g. SAMPLE1)")
     parser.add_argument("-d", "--data_dir", default="resources/raw", help="Folder containing raw reads (default: resources/raw)")
     parser.add_argument("-o", "--out_dir", default="results", help="Folder for outputs (default: results)")
     # FIX: restrict platform choices to auto and short until long-read support is implemented

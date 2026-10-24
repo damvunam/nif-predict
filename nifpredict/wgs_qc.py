@@ -216,8 +216,7 @@ def run_busco(assembly_path, out_dir, lineage="bacillales_odb10", threads=10):
     Args:
         assembly_path: path to the assembled genome (assembly.fasta)
         out_dir: parent directory where BUSCO writes its "busco_result" run folder
-        lineage: BUSCO lineage dataset to compare against (default: bacillales_odb10,
-                 matches X35's 16S hit - Bacillus velezensis)
+        lineage: BUSCO lineage dataset to compare against (default: bacillales_odb10)
         threads: number of threads to use (default: 10)
 
     Returns:
@@ -315,17 +314,7 @@ def run_assembly_qc_gate(assembly_path, out_dir, lineage="bacillales_odb10",
 
 
 if __name__ == "__main__":
-    # FIX (W11): replace hardcoded G1X paths/sample name with CLI arguments
-    # fastq_file_1 = "resources/raw/G1X_1.fq.gz"
-    # fastq_file_2 = "resources/raw/G1X_2.fq.gz"
-    # peek_read_length(fastq_file_1)
-    # peek_read_length(fastq_file_2)
-    #
-    # result = run_fastp(fastq_file_1, fastq_file_2, out_dir="results/qc", sample_name="G1X")
-    # print(result)
-    #
-    # if result:
-    #     check_qc_report(result["json"])
+    # FIX (W11): read paths and sample name come from CLI arguments (no hardcoded sample)
     parser = argparse.ArgumentParser(description="Run read-level QC (fastp) and Gate 1 quality check.")
     parser.add_argument("-1", "--r1", required=True, help="Path to R1 fastq/fastq.gz file (required)")
     parser.add_argument("-2", "--r2", required=True, help="Path to R2 fastq/fastq.gz file (required)")

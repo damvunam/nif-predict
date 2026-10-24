@@ -9,7 +9,7 @@ def find_raw_reads(data_dir, sample_name):
     
     Args:
         data_dir (str): Folder containing raw fastq/fastq.gz files.
-        sample_name (str): Sample prefix to match (e.g. "X35").
+        sample_name (str): Sample prefix to match (e.g. "SAMPLE1").
 
     Returns:
         list: Sorted list of matching fastq file paths, or None if none found.
@@ -37,12 +37,7 @@ def find_raw_reads(data_dir, sample_name):
     return found_files
 
 if __name__ == "__main__":
-    # FIX (W11): replace hardcoded G1X sample and data directory with CLI arguments
-    # # Test with your own data folder
-    # test_dir = "resources/raw"
-    # test_sample = "G1X"
-    #
-    # reads = find_raw_reads(test_dir, test_sample)
+    # FIX (W11): sample name and data directory come from CLI arguments (no hardcoded sample)
     parser = argparse.ArgumentParser(description="Find raw fastq files for a given sample.")
     parser.add_argument("-s", "--sample", required=True, help="Sample name prefix (required)")
     parser.add_argument("-d", "--data_dir", default="resources/raw", help="Folder containing raw fastq files (default: resources/raw)")

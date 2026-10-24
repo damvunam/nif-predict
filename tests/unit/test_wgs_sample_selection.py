@@ -68,36 +68,36 @@ def test_get_sample_raw_reads_accepts_valid_separators(tmp_path: Path, sep: str)
 def test_get_sample_raw_reads_prefix_collision_both_samples_present(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A3: Both G1_* and G1X_* present -> returns G1 pair and prints 2 Warning lines ignoring G1X."""
-    # NOTE: find_raw_reads prints "Found 4 file(s) for sample 'G1'" before get_sample_raw_reads
-    # filters out the G1X_* files, which can look misleading in logs.
-    g1_1 = _touch(tmp_path / "G1_1.fq.gz")
-    g1_2 = _touch(tmp_path / "G1_2.fq.gz")
-    g1x_1 = _touch(tmp_path / "G1X_1.fq.gz")
-    g1x_2 = _touch(tmp_path / "G1X_2.fq.gz")
+    """A3: Both X1_* and X13_* present -> returns X1 pair and prints 2 Warning lines ignoring X13."""
+    # NOTE: find_raw_reads prints "Found 4 file(s) for sample 'X1'" before get_sample_raw_reads
+    # filters out the X13_* files, which can look misleading in logs.
+    x1_1 = _touch(tmp_path / "X1_1.fq.gz")
+    x1_2 = _touch(tmp_path / "X1_2.fq.gz")
+    x13_1 = _touch(tmp_path / "X13_1.fq.gz")
+    x13_2 = _touch(tmp_path / "X13_2.fq.gz")
 
-    res = run_wgs_sample.get_sample_raw_reads(str(tmp_path), "G1")
-    assert res == (str(g1_1), str(g1_2))
+    res = run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X1")
+    assert res == (str(x1_1), str(x1_2))
 
     out_lines = capsys.readouterr().out.splitlines()
     warnings = [line for line in out_lines if line.startswith("Warning: ignoring ")]
     assert len(warnings) == 2
-    assert any(str(g1x_1) in w and "(does not match sample name G1)" in w for w in warnings)
-    assert any(str(g1x_2) in w and "(does not match sample name G1)" in w for w in warnings)
+    assert any(str(x13_1) in w and "(does not match sample name X1)" in w for w in warnings)
+    assert any(str(x13_2) in w and "(does not match sample name X1)" in w for w in warnings)
 
 
 def test_get_sample_raw_reads_prefix_collision_only_longer_sample_present(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A4: Only C2X_1.fq.gz and C2X_2.fq.gz present; querying C2 returns (None, None) and never C2X files."""
-    _touch(tmp_path / "C2X_1.fq.gz")
-    _touch(tmp_path / "C2X_2.fq.gz")
+    """A4: Only X21_1.fq.gz and X21_2.fq.gz present; querying X2 returns (None, None) and never X21 files."""
+    _touch(tmp_path / "X21_1.fq.gz")
+    _touch(tmp_path / "X21_2.fq.gz")
 
-    res = run_wgs_sample.get_sample_raw_reads(str(tmp_path), "C2")
+    res = run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X2")
     assert res == (None, None)
 
     out_lines = capsys.readouterr().out.splitlines()
-    assert any(line.startswith("Error: expected 2 fastq files for C2, found 0") for line in out_lines)
+    assert any(line.startswith("Error: expected 2 fastq files for X2, found 0") for line in out_lines)
 
 
 def test_get_sample_raw_reads_no_matching_files_returns_none_tuple(
