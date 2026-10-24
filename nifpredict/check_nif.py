@@ -310,7 +310,9 @@ def is_nif_present_reads(summary,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Check whether a WGS sample carries nifH/nifD/nifK.")
-    parser.add_argument("-s", "--sample", default="G1X", help="Sample name (default: G1X)")
+    # FIX (W11): G1X was dropped; running without -s must not silently fall back to a fixed sample
+    # parser.add_argument("-s", "--sample", default="G1X", help="Sample name (default: G1X)")
+    parser.add_argument("-s", "--sample", required=True, help="Sample name (required)")
     parser.add_argument("-r", "--reads_dir", default="results/qc", help="Folder with {sample}_R1/_R2.trim.fastq.gz (default: results/qc)")
     parser.add_argument("-a", "--assembly", default=None, help="Assembly FASTA; if given, uses tblastn (default: none -> reads mode)")
     parser.add_argument("-o", "--out_dir", default="results/nif_check", help="Output folder (default: results/nif_check)")

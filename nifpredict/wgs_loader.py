@@ -1,4 +1,5 @@
 # wgs_loader.py
+import argparse
 import os
 import glob
 
@@ -36,11 +37,18 @@ def find_raw_reads(data_dir, sample_name):
     return found_files
 
 if __name__ == "__main__":
-    # Test with your own data folder
-    test_dir = "resources/raw"
-    test_sample = "G1X"
+    # FIX (W11): replace hardcoded G1X sample and data directory with CLI arguments
+    # # Test with your own data folder
+    # test_dir = "resources/raw"
+    # test_sample = "G1X"
+    #
+    # reads = find_raw_reads(test_dir, test_sample)
+    parser = argparse.ArgumentParser(description="Find raw fastq files for a given sample.")
+    parser.add_argument("-s", "--sample", required=True, help="Sample name prefix (required)")
+    parser.add_argument("-d", "--data_dir", default="resources/raw", help="Folder containing raw fastq files (default: resources/raw)")
+    args = parser.parse_args()
 
-    reads = find_raw_reads(test_dir, test_sample)
+    reads = find_raw_reads(args.data_dir, args.sample)
 
     if reads:
         print("\nFiles found:")

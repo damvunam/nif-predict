@@ -1,4 +1,5 @@
-#wgs_qc.py
+# wgs_qc.py
+import argparse
 import gzip
 import subprocess
 import os
@@ -45,16 +46,16 @@ def peek_read_length(fastq_path, n_reads=100):
 
 def run_fastp(r1_path, r2_path, out_dir, sample_name="sample"):
     """
-    Runs fastp ro trim adapters and filter low-quality reads.
+    Runs fastp to trim adapters and filter low-quality reads.
 
     Args:
         r1_path (str): Path to R1 fastq file.
         r2_path (str): Path to R2 fastq file.
-        out_dir (str): Directory wo write trimmed output into.
+        out_dir (str): Directory to write trimmed output into.
         sample_name (str): Prefix for output filenames (default "sample").
-    
-        Returns:
-            dict: Paths to trimmed R1/R2 and the fastp report, or None if fastp failed.
+
+    Returns:
+        dict: Paths to trimmed R1/R2 and the fastp report, or None if fastp failed.
     """
 
     # 1. Prepare output paths
@@ -241,13 +242,13 @@ def run_busco(assembly_path, out_dir, lineage="bacillales_odb10", threads=10):
 
 def check_assembly_quality(quast_report_path, busco_summary_path, min_n50=50000, min_busco_completeness=95.0):
     """
-    Go/no-go gate for a genome assembly (advisor's rule): N50 must be close to
-    the expected genome size AND BUSCO completeness must be high enough.
+    Go/no-go gate for a genome assembly: N50 must reach a minimum floor
+    (blocking overly fragmented assemblies) AND BUSCO completeness must be high enough.
 
     Args:
         quast_report_path: path to QUAST's report.tsv
         busco_summary_path: path to BUSCO's short_summary JSON file
-        min_n50: minimum acceptable N50 in bp (default: 4200000, ~X35 genome size)
+        min_n50: minimum acceptable N50 in bp (default: 50000; a floor against fragmented assemblies, not a genome-size target)
         min_busco_completeness: minimum acceptable BUSCO completeness in % (default: 95.0)
 
     Returns:
@@ -314,12 +315,28 @@ def run_assembly_qc_gate(assembly_path, out_dir, lineage="bacillales_odb10",
 
 
 if __name__ == "__main__":
-    fastq_file_1 = "resources/raw/G1X_1.fq.gz"
-    fastq_file_2 = "resources/raw/G1X_2.fq.gz"
-    peek_read_length(fastq_file_1)
-    peek_read_length(fastq_file_2)
+    # FIX (W11): replace hardcoded G1X paths/sample name with CLI arguments
+    # fastq_file_1 = "resources/raw/G1X_1.fq.gz"
+    # fastq_file_2 = "resources/raw/G1X_2.fq.gz"
+    # peek_read_length(fastq_file_1)
+    # peek_read_length(fastq_file_2)
+    #
+    # result = run_fastp(fastq_file_1, fastq_file_2, out_dir="results/qc", sample_name="G1X")
+    # print(result)
+    #
+    # if result:
+    #     check_qc_report(result["json"])
+    parser = argparse.ArgumentParser(description="Run read-level QC (fastp) and Gate 1 quality check.")
+    parser.add_argument("-1", "--r1", required=True, help="Path to R1 fastq/fastq.gz file (required)")
+    parser.add_argument("-2", "--r2", required=True, help="Path to R2 fastq/fastq.gz file (required)")
+    parser.add_argument("-s", "--sample", required=True, help="Sample name (required)")
+    parser.add_argument("-o", "--out_dir", default="results/qc", help="Directory for trimmed reads and reports (default: results/qc)")
+    args = parser.parse_args()
 
-    result = run_fastp(fastq_file_1, fastq_file_2, out_dir="results/qc", sample_name="G1X")
+    peek_read_length(args.r1)
+    peek_read_length(args.r2)
+
+    result = run_fastp(args.r1, args.r2, out_dir=args.out_dir, sample_name=args.sample)
     print(result)
 
     if result:
