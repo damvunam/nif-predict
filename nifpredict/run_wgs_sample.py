@@ -3,6 +3,7 @@
 import argparse
 import glob
 import os
+import re
 import subprocess
 import sys
 
@@ -20,6 +21,37 @@ from wgs_assembly import assemble_genome
 import contig_stats
 
 
+def get_mate_number(file_path, sample_name):
+    """Extract mate number (1 or 2) from a raw read filename after stripping sample prefix and extension.
+
+    Args:
+        file_path: Path or filename of the fastq file (str).
+        sample_name: Sample prefix to strip from the beginning of the basename (str).
+
+    Returns:
+        int: 1 or 2 if unambiguously identified, or None if missing or ambiguous.
+    """
+    # 1. Strip directory and sample_name prefix
+    base_name = os.path.basename(file_path)
+    if base_name.startswith(sample_name):
+        remainder = base_name[len(sample_name):]
+    else:
+        remainder = base_name
+
+    # 2. Strip supported fastq extensions (longest first)
+    for ext in (".fastq.gz", ".fq.gz", ".fastq", ".fq"):
+        if remainder.endswith(ext):
+            remainder = remainder[:-len(ext)]
+            break
+
+    # 3. Find all mate tokens matching [._-]?[Rr]?[12] bounded by separator or end of string
+    matches = re.findall(r"(?:^|[._-])[Rr]?([12])(?=[._-]|$)", remainder)
+    unique_mates = {int(m) for m in matches}
+    if len(unique_mates) == 1:
+        return unique_mates.pop()
+    return None
+
+
 def get_sample_raw_reads(data_dir, sample_name):
     """Find raw paired-end short reads for a sample, returning (r1_path, r2_path).
 
@@ -28,7 +60,8 @@ def get_sample_raw_reads(data_dir, sample_name):
         sample_name: Identifier of the sample.
 
     Returns:
-        tuple: (r1_path, r2_path) or (None, None) if not found or count != 2.
+        tuple: (r1_path, r2_path) ordered as mate 1 then mate 2, or (None, None) if not found,
+               count != 2, or R1/R2 mate numbers cannot be unambiguously determined.
     """
     # FIX: do not swallow exceptions or guess return types; find_raw_reads returns sorted list or None
     # try:
@@ -56,7 +89,17 @@ def get_sample_raw_reads(data_dir, sample_name):
         print(f"Error: expected 2 fastq files for {sample_name}, found {len(matched_files)}: {matched_files}")
         return None, None
 
-    return matched_files[0], matched_files[1]
+    # FIX (W14): assign R1/R2 by parsed mate number instead of lexicographic sort order
+    # return matched_files[0], matched_files[1]
+    mate_0 = get_mate_number(matched_files[0], sample_name)
+    mate_1 = get_mate_number(matched_files[1], sample_name)
+    if mate_0 is None or mate_1 is None or mate_0 == mate_1:
+        print(f"Error: cannot tell R1 from R2 for {sample_name}: {matched_files}")
+        return None, None
+
+    if mate_0 == 1:
+        return matched_files[0], matched_files[1]
+    return matched_files[1], matched_files[0]
 
 
 def determine_platform(platform, r1_path):
