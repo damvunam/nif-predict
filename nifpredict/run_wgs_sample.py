@@ -10,6 +10,8 @@ from wgs_loader import find_raw_reads
 from wgs_qc import (
     check_assembly_quality,
     check_qc_report,
+    get_fasta_total_length,
+    get_read_coverage,
     peek_read_length,
     run_assembly_qc_gate,
     run_fastp,
@@ -248,6 +250,45 @@ def run_sample_contig_stats(assembly_fasta_path, contig_stats_tsv_path):
     return True
 
 
+def print_sample_coverage(fastp_json_path, assembly_fasta_path, ref_genome_path):
+    """Prints read coverage (x) against the assembly and the reference genome. Print only, never stops the run.
+
+    Args:
+        fastp_json_path: Path to fastp JSON report (str).
+        assembly_fasta_path: Path to assembled FASTA file (str).
+        ref_genome_path: Path to reference genome FASTA file (str).
+
+    Returns:
+        None.
+    """
+    # 1. Coverage against assembly length
+    asm_size = get_fasta_total_length(assembly_fasta_path)
+    asm_cov = get_read_coverage(fastp_json_path, asm_size)
+    if asm_cov is not None:
+        print(
+            f"COVERAGE: {asm_cov['coverage']:.1f}x vs assembly "
+            f"({asm_cov['total_bases']:,} bases after fastp / {asm_cov['genome_size']:,} bp)"
+        )
+    else:
+        print("Warning: COVERAGE vs assembly not computed")
+
+    # 2. Coverage against reference genome length, if the reference exists
+    if ref_genome_path and os.path.exists(ref_genome_path):
+        ref_size = get_fasta_total_length(ref_genome_path)
+        ref_cov = get_read_coverage(fastp_json_path, ref_size)
+        if ref_cov is not None:
+            print(
+                f"COVERAGE: {ref_cov['coverage']:.1f}x vs reference "
+                f"({ref_cov['total_bases']:,} bases after fastp / {ref_cov['genome_size']:,} bp, {ref_genome_path})"
+            )
+        else:
+            print("Warning: COVERAGE vs reference not computed")
+    else:
+        print(f"Warning: COVERAGE vs reference skipped, not found: {ref_genome_path}")
+
+    return None
+
+
 def check_sample_identity(assembly_fasta_path, ref_genome_path, identity_tsv_path, threads=10):
     """Check identity against reference genome using skani dist.
 
@@ -384,6 +425,7 @@ if __name__ == "__main__":
         print(f"[DRY-RUN] Step 3 (Assembly): {assembly_fasta_path} (platform: {platform}, threads: {args.threads})")
         print(f"[DRY-RUN] Step 4 (Gate 2 QUAST+BUSCO): {assembly_qc_dir} (min_n50=50000, min_busco=95.0)")
         print(f"[DRY-RUN] Step 5 (Contig stats): {contig_stats_tsv_path}")
+        print(f"[DRY-RUN] Step 5b (Coverage): {fastp_json_path} vs {assembly_fasta_path} and {args.ref_genome}")
         print(f"[DRY-RUN] Step 6 (Identity check): {identity_tsv_path} vs {args.ref_genome}")
         sys.exit(0)
 
@@ -408,6 +450,9 @@ if __name__ == "__main__":
 
     # 9. Step 5: Contig stats
     run_sample_contig_stats(assembly_fasta_path, contig_stats_tsv_path)
+
+    # 9b. Step 5b: Print read coverage (print only, not a gate)
+    print_sample_coverage(fastp_json_path, assembly_fasta_path, args.ref_genome)
 
     # 10. Step 6: Identity check
     identity_res = check_sample_identity(assembly_fasta_path, args.ref_genome, identity_tsv_path, args.threads)
