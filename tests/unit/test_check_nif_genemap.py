@@ -49,14 +49,15 @@ def test_mk67i_hit_never_becomes_best_nifk(tmp_path: Path) -> None:
     gene_map = load_gene_map(_write_fasta(tmp_path / "ref.faa"))
     hits = tmp_path / "hits.tsv"
     rows = [
-        # qseqid, sseqid, pident, length, qlen, evalue, bitscore, sstart, send
-        ("sp|P00466|NIFH_KLEPN", "contig_1", "85", "290", "293", "1e-150", "500", "1000", "1870"),
-        ("sp|P07328|NIFD_KLEPN", "contig_1", "70", "470", "483", "1e-200", "650", "2000", "3410"),
-        ("sp|Q9BYG3|MK67I_HUMAN", "contig_9", "99", "290", "293", "1e-200", "900", "10", "880"),
+        # qseqid, sseqid, pident, length, qlen, evalue, bitscore, sstart, send, qstart, qend
+        ("sp|P00466|NIFH_KLEPN", "contig_1", "85", "290", "293", "1e-150", "500", "1000", "1870", "1", "290"),
+        ("sp|P07328|NIFD_KLEPN", "contig_1", "70", "470", "483", "1e-200", "650", "2000", "3410", "1", "470"),
+        ("sp|Q9BYG3|MK67I_HUMAN", "contig_9", "99", "290", "293", "1e-200", "900", "10", "880", "1", "290"),
     ]
     hits.write_text("\n".join("\t".join(r) for r in rows) + "\n")
 
     best = summarize_tblastn(hits, gene_map)
+    assert best is not None
     assert "nifK" not in best
     verdict, _ = is_nif_present_assembly(best)
     assert verdict == "PARTIAL - check manually"
