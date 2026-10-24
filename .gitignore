@@ -26,41 +26,106 @@ htmlcov/
 # Environment variables
 .env
 
-# Generated outputs
-logs/*
-results/
-annotation/
-docs/
+# Local only (never commit)
+test_data/
+GEMINI.md
+plan.md
+# Claude Code local config (sub-agent definitions), not part of the project
+.claude/
+# Review notes from the review project; local only
+review/
 
-# MLOps Data Governance:
+# ---------------------------------------------------------------------------
+# Generated outputs: ignore the CONTENTS of results/ (at any depth),
+# not the folders themselves, so the whitelist below can re-include files.
+# (A rule "results/" would exclude the folder, and git cannot re-include a
+# file whose parent folder is excluded.)
+# ---------------------------------------------------------------------------
+logs/*
+annotation/
+**/results/**
+docs/
+# let git look inside sub-folders (folders only; files stay ignored)
+!**/results/**/
+
+# Whitelist (task records only)
+!**/results/w*/W*.md
+!**/results/**/run_*.sh
+!**/results/**/REPORT.md
+
+# MLOps data governance (unchanged; ML/DVC paused)
 data/*
 **/resources/*
 **/busco_downloads/
 
-# sequencing data
+# ---------------------------------------------------------------------------
+# Data by FILE TYPE, anywhere in the repo. These come AFTER the whitelist, so
+# they win: a read/genome/large file is never committed even inside a
+# whitelisted folder. To commit a small fixture, add "!path/to/file" at the
+# very end of this file.
+# ---------------------------------------------------------------------------
+# reads
 *.fq
 *.fastq
 *.fq.gz
 *.fastq.gz
+*.sra
+*.bam
+*.bai
+*.sam
+*.cram
+*.vcf
+# genomes, annotations, assembly graphs
 *.fa
 *.fasta
 *.fna
 *.faa
 *.ffn
+*.fsa
 *.gfa
 *.gff
 *.gff3
 *.gbk
-*.bam
-*.sam
-*.vcf
+*.gbff
+*.sqn
+*.tbl
+# HMM / BLAST databases
+*.hmm
+*.hmm.gz
+*.h3f
+*.h3i
+*.h3m
+*.h3p
+*.ndb
+*.nhr
+*.nin
+*.njs
+*.nog
+*.nos
+*.not
+*.nsq
+*.ntf
+*.nto
+*.pdb
+*.phr
+*.pin
+*.pjs
+*.pot
+*.psq
+*.ptf
+*.pto
+# archives and other large binaries
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.parquet
+*.pkl
+*.joblib
 
-# (Gemini)
-test_data/
-GEMINI.md
-plan.md
-
-# DVC metadata và placeholder
+# DVC metadata and placeholders
 !data/**/.gitkeep
 !data/**/*.dvc
 
@@ -71,11 +136,3 @@ plan.md
 !data/labels/
 data/labels/*
 !data/labels/label_manifest.csv
-# local only
-test_data/
-GEMINI.md
-plan.md
-# Claude Code local config (sub-agent definitions), not part of the project
-.claude/
-# Review notes from the review project; local only
-review/
