@@ -75,3 +75,5 @@ data/labels/*
 test_data/
 GEMINI.md
 plan.md
+# Claude Code local config (sub-agent definitions), not part of the project
+.claude/
