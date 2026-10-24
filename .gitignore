@@ -36,22 +36,16 @@ plan.md
 review/
 
 # ---------------------------------------------------------------------------
-# Generated outputs: ignore the CONTENTS of results/ (at any depth),
-# not the folders themselves, so the whitelist below can re-include files.
-# (A rule "results/" would exclude the folder, and git cannot re-include a
-# file whose parent folder is excluded.)
+# GitHub holds CODE ONLY (.py, tests, config, dvc.yaml, pyproject/requirements,
+# README.md, .gitignore). Outputs, task specs, run scripts and notes stay local.
 # ---------------------------------------------------------------------------
 logs/*
 annotation/
-**/results/**
+results/
 docs/
-# let git look inside sub-folders (folders only; files stay ignored)
-!**/results/**/
-
-# Whitelist (task records only)
-!**/results/w*/W*.md
-!**/results/**/run_*.sh
-!**/results/**/REPORT.md
+# every Markdown file except the root README
+*.md
+!/README.md
 
 # MLOps data governance (unchanged; ML/DVC paused)
 data/*
