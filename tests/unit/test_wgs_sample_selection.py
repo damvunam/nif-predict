@@ -1,4 +1,4 @@
-"""Unit tests for WGS sample raw-read selection, platform detection, and read-length peeking (W12)."""
+"""Unit tests for WGS sample raw-read selection, platform detection, and read-length peeking (W12, updated W14)."""
 
 from __future__ import annotations
 
@@ -46,12 +46,12 @@ def _write_fastq(path: Path, read_lengths: list[int]) -> Path:
 
 
 # ==============================================================================
-# A. run_wgs_sample.get_sample_raw_reads(data_dir, sample_name)
+# A. run_wgs_sample.get_sample_raw_reads(data_dir, sample_name) & get_mate_number
 # ==============================================================================
 
 
 def test_get_sample_raw_reads_standard_pair_returns_r1_then_r2(tmp_path: Path) -> None:
-    """A1: Directory with X35_1.fq.gz and X35_2.fq.gz returns (r1, r2) in sorted order."""
+    """A1: Directory with X35_1.fq.gz and X35_2.fq.gz returns (r1, r2) in mate order."""
     r1 = _touch(tmp_path / "X35_1.fq.gz")
     r2 = _touch(tmp_path / "X35_2.fq.gz")
     assert run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(r1), str(r2))
@@ -126,25 +126,27 @@ def test_get_sample_raw_reads_three_matching_files_returns_none_tuple(
     assert any(line.startswith("Error: expected 2 fastq files for X35, found 3") for line in out_lines)
 
 
-def test_get_sample_raw_reads_accepts_bare_sample_name_before_extension_dot(tmp_path: Path) -> None:
-    """A7: X35.fq has '.' at base_name[len('X35')], so it is accepted alongside X35_2.fq."""
-    # NOTE: Because '.' is in ("_", ".", "-"), a single-end or unnumbered file named `X35.fq`
-    # passes the prefix separator check (`base_name[len("X35")] == "."`) and is paired with `X35_2.fq`.
-    f_dot = _touch(tmp_path / "X35.fq")
-    f_sub = _touch(tmp_path / "X35_2.fq")
-    # In ASCII, '.' (46) < '_' (95), so X35.fq sorts before X35_2.fq
-    assert run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(f_dot), str(f_sub))
+def test_get_sample_raw_reads_rejects_unnumbered_bare_sample_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A7: X35.fq + X35_2.fq -> (None, None) and prints Error: cannot tell R1 from R2 for X35."""
+    _touch(tmp_path / "X35.fq")
+    _touch(tmp_path / "X35_2.fq")
+
+    res = run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35")
+    assert res == (None, None)
+
+    out_lines = capsys.readouterr().out.splitlines()
+    assert any(line.startswith("Error: cannot tell R1 from R2 for X35") for line in out_lines)
 
 
-def test_get_sample_raw_reads_mixed_separators_inverts_r1_r2_order(tmp_path: Path) -> None:
-    """A8: Mixing separators (X_1.fq.gz and X.2.fq.gz) sorts '.' before '_', returning X.2.fq.gz as R1."""
-    # NOTE: find_raw_reads sorts paths lexicographically (`sorted(found_files)`). Since ASCII '.' (46)
-    # comes before '_' (95), `X.2.fq.gz` sorts before `X_1.fq.gz`, causing R1 and R2 to be swapped.
+def test_get_sample_raw_reads_mixed_separators_returns_true_r1_then_r2(tmp_path: Path) -> None:
+    """A8: Mixing separators (X_1.fq.gz and X.2.fq.gz) still returns (X_1.fq.gz, X.2.fq.gz) by mate number."""
     r1_underscore = _touch(tmp_path / "X_1.fq.gz")
     r2_dot = _touch(tmp_path / "X.2.fq.gz")
 
     res = run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X")
-    assert res == (str(r2_dot), str(r1_underscore))
+    assert res == (str(r1_underscore), str(r2_dot))
 
 
 @pytest.mark.parametrize("ext", [".fastq", ".fastq.gz", ".fq", ".fq.gz"])
@@ -162,6 +164,66 @@ def test_find_raw_reads_unsupported_extension_ignored(tmp_path: Path) -> None:
     _touch(tmp_path / "X35_2.txt")
     assert wgs_loader.find_raw_reads(str(tmp_path), "X35") is None
     assert run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35") == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        ("X35_1.fq.gz", 1),
+        ("X35_R2.fastq.gz", 2),
+        ("X35.r1.fq", 1),
+        ("X35-2.fq", 2),
+        ("X35_S1_L001_R1_001.fastq.gz", 1),
+        ("X35.fq", None),
+        ("X35_1_R2.fq.gz", None),
+    ],
+)
+def test_get_mate_number_examples(filename: str, expected: int | None) -> None:
+    """A10: get_mate_number returns 1, 2, or None across the 7 spec examples."""
+    assert run_wgs_sample.get_mate_number(filename, "X35") == expected
+
+
+def test_get_sample_raw_reads_r2_sorts_before_r1_still_returns_r1_first(tmp_path: Path) -> None:
+    """A11: X35.R2.fq.gz sorts before X35_R1.fq.gz, but get_sample_raw_reads returns (X35_R1, X35.R2)."""
+    r2 = _touch(tmp_path / "X35.R2.fq.gz")
+    r1 = _touch(tmp_path / "X35_R1.fq.gz")
+    assert run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(r1), str(r2))
+
+
+def test_get_sample_raw_reads_duplicate_mate_numbers_rejected(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A12: Two files with the same mate number (X35_1.fq.gz and X35-1.fq.gz) -> (None, None) + Error."""
+    _touch(tmp_path / "X35_1.fq.gz")
+    _touch(tmp_path / "X35-1.fq.gz")
+
+    res = run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35")
+    assert res == (None, None)
+
+    out_lines = capsys.readouterr().out.splitlines()
+    assert any(line.startswith("Error: cannot tell R1 from R2") for line in out_lines)
+
+
+def test_get_sample_raw_reads_illumina_style_filenames(tmp_path: Path) -> None:
+    """A13: Illumina-style filenames X35_S1_L001_R1_001.fastq.gz + R2 -> returns (R1, R2)."""
+    r1 = _touch(tmp_path / "X35_S1_L001_R1_001.fastq.gz")
+    r2 = _touch(tmp_path / "X35_S1_L001_R2_001.fastq.gz")
+    assert run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(r1), str(r2))
+
+
+def test_get_sample_raw_reads_date_stamped_filenames(tmp_path: Path) -> None:
+    """A14 (Claude, W14 review): digits inside a longer number (e.g. a date) are not mate numbers."""
+    r1 = _touch(tmp_path / "X35_20231001_R1.fq.gz")
+    r2 = _touch(tmp_path / "X35_20231001_R2.fq.gz")
+    assert run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(r1), str(r2))
+
+
+def test_get_sample_raw_reads_sample_name_containing_mate_like_token(tmp_path: Path) -> None:
+    """A15 (Claude, W14 review): the sample name itself is stripped before looking for the mate number (sample 'X35-2')."""
+    r1 = _touch(tmp_path / "X35-2_R1.fq.gz")
+    r2 = _touch(tmp_path / "X35-2_R2.fq.gz")
+    assert run_wgs_sample.get_mate_number(str(r2), "X35-2") == 2
+    assert run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35-2") == (str(r1), str(r2))
 
 
 # ==============================================================================
