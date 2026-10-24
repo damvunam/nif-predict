@@ -77,3 +77,5 @@ GEMINI.md
 plan.md
 # Claude Code local config (sub-agent definitions), not part of the project
 .claude/
+# Review notes from the review project; local only
+review/
