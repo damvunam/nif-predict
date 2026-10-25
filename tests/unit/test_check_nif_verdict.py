@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-import nifpredict.check_nif as check_nif
-from nifpredict.check_nif import (
+import nifpredict.nif.check_nif as check_nif
+from nifpredict.nif.check_nif import (
     is_nif_present_assembly,
     is_nif_present_reads,
     summarize_reads,

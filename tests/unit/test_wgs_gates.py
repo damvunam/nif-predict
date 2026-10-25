@@ -3,19 +3,13 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
-# wgs_qc.py / run_wgs_sample.py import sibling modules by bare name (cwd = nifpredict/)
-NIFPREDICT_DIR = Path(__file__).resolve().parents[2] / "nifpredict"
-sys.path.insert(0, str(NIFPREDICT_DIR))
+from nifpredict.wgs import qc, run_sample
 
-import run_wgs_sample  # noqa: E402
-import wgs_qc  # noqa: E402
-
-# Thresholds used by run_wgs_sample.py for gate 2
+# Thresholds used by run_sample.py for gate 2
 GATE2 = {"min_n50": 50000, "min_busco_completeness": 95.0}
 
 SKANI_HEADER = (
@@ -78,25 +72,25 @@ def _identity_inputs(tmp_path: Path, ani: float | None) -> tuple[str, str, str]:
 )
 def test_check_qc_report_thresholds(tmp_path: Path, q30: float, dup: float, expected: bool) -> None:
     json_path = _write_fastp_json(tmp_path / "fastp.json", q30=q30, dup=dup)
-    assert wgs_qc.check_qc_report(str(json_path)) is expected
+    assert qc.check_qc_report(str(json_path)) is expected
 
 
 def test_check_qc_report_bad_input(tmp_path: Path) -> None:
-    assert wgs_qc.check_qc_report(str(tmp_path / "missing.json")) is False
+    assert qc.check_qc_report(str(tmp_path / "missing.json")) is False
 
     bad = tmp_path / "bad.json"
     bad.write_text("{not_valid_json")
-    assert wgs_qc.check_qc_report(str(bad)) is False
+    assert qc.check_qc_report(str(bad)) is False
 
     no_dup = tmp_path / "no_dup.json"
     no_dup.write_text(json.dumps({"summary": {"after_filtering": {"q30_rate": 0.9}}}))
-    assert wgs_qc.check_qc_report(str(no_dup)) is False
+    assert qc.check_qc_report(str(no_dup)) is False
 
 
 def test_is_sample_qc_gate_passed(tmp_path: Path) -> None:
     ok = _write_fastp_json(tmp_path / "ok.fastp.json", q30=0.85, dup=0.01)
-    assert run_wgs_sample.is_sample_qc_gate_passed(str(ok), "T1") is True
-    assert run_wgs_sample.is_sample_qc_gate_passed(str(tmp_path / "none.json"), "T1") is False
+    assert run_sample.is_sample_qc_gate_passed(str(ok), "T1") is True
+    assert run_sample.is_sample_qc_gate_passed(str(tmp_path / "none.json"), "T1") is False
 
 
 # --- Gate 2 -------------------------------------------------------------------------------
@@ -112,22 +106,22 @@ def test_is_sample_qc_gate_passed(tmp_path: Path) -> None:
 )
 def test_check_assembly_quality_thresholds(tmp_path: Path, n50: int, busco: float, expected: bool) -> None:
     quast, busco_json = _gate2_files(tmp_path, n50, busco)
-    assert wgs_qc.check_assembly_quality(quast, busco_json, **GATE2) is expected
+    assert qc.check_assembly_quality(quast, busco_json, **GATE2) is expected
 
 
 def test_check_assembly_quality_bad_input(tmp_path: Path) -> None:
     quast, busco_json = _gate2_files(tmp_path, None, 99.0)
-    assert wgs_qc.check_assembly_quality(quast, busco_json, **GATE2) is False
+    assert qc.check_assembly_quality(quast, busco_json, **GATE2) is False
 
     no_results = tmp_path / "busco_no_results.json"
     no_results.write_text(json.dumps({"other": {}}))
     quast_ok = _write_quast_tsv(tmp_path / "report_ok.tsv", n50=100000)
-    assert wgs_qc.check_assembly_quality(str(quast_ok), str(no_results), **GATE2) is False
+    assert qc.check_assembly_quality(str(quast_ok), str(no_results), **GATE2) is False
 
 
 def test_check_assembly_quality_reads_n50_not_n90(tmp_path: Path) -> None:
     quast, busco_json = _gate2_files(tmp_path, n50=60000, busco=98.0, n90=1000)
-    assert wgs_qc.check_assembly_quality(quast, busco_json, **GATE2) is True
+    assert qc.check_assembly_quality(quast, busco_json, **GATE2) is True
 
 
 @pytest.mark.parametrize("n50,expected", [(120000, True), (49999, False)])
@@ -142,23 +136,23 @@ def test_is_sample_gate2_passed_reuses_reports(
     def _must_not_run(*args, **kwargs):
         raise AssertionError("QUAST/BUSCO must not run when reports exist")
 
-    monkeypatch.setattr(run_wgs_sample, "run_assembly_qc_gate", _must_not_run)
+    monkeypatch.setattr(run_sample, "run_assembly_qc_gate", _must_not_run)
     asm = tmp_path / "assembly.fasta"
     asm.write_text(">c1\nATGC\n")
-    assert run_wgs_sample.is_sample_gate2_passed(str(asm), str(qc_dir), 4) is expected
+    assert run_sample.is_sample_gate2_passed(str(asm), str(qc_dir), 4) is expected
 
 
 # --- Identity -----------------------------------------------------------------------------
 
 def test_check_sample_identity_missing_ref(tmp_path: Path) -> None:
     asm, _, tsv = _identity_inputs(tmp_path, 99.0)
-    res = run_wgs_sample.check_sample_identity(asm, str(tmp_path / "missing.fna"), tsv)
+    res = run_sample.check_sample_identity(asm, str(tmp_path / "missing.fna"), tsv)
     assert res["status"] == "ERROR"
 
 
 def test_check_sample_identity_header_only(tmp_path: Path) -> None:
     asm, ref, tsv = _identity_inputs(tmp_path, None)
-    res = run_wgs_sample.check_sample_identity(asm, ref, tsv)
+    res = run_sample.check_sample_identity(asm, ref, tsv)
     assert res["status"] == "FAIL"
     assert res["ani"] is None
 
@@ -166,7 +160,7 @@ def test_check_sample_identity_header_only(tmp_path: Path) -> None:
 @pytest.mark.parametrize("ani,expected", [(94.99, "FAIL"), (95.0, "PASS"), (99.99, "PASS")])
 def test_check_sample_identity_ani_threshold(tmp_path: Path, ani: float, expected: str) -> None:
     asm, ref, tsv = _identity_inputs(tmp_path, ani)
-    res = run_wgs_sample.check_sample_identity(asm, ref, tsv)
+    res = run_sample.check_sample_identity(asm, ref, tsv)
     assert res["status"] == expected
     assert res["ani"] == pytest.approx(ani)
 
@@ -176,25 +170,25 @@ def test_check_sample_identity_ani_threshold(tmp_path: Path, ani: float, expecte
 def test_get_fasta_total_length(tmp_path: Path) -> None:
     fasta = tmp_path / "test.fasta"
     fasta.write_text(">c1\nATGCATGCAT\n\n>c2\nATGCATGCAT\nGCATGCATGC\n\n>c3\nATGCA\n")
-    assert wgs_qc.get_fasta_total_length(str(fasta)) == 35
+    assert qc.get_fasta_total_length(str(fasta)) == 35
 
     empty = tmp_path / "empty.fasta"
     empty.write_text("")
-    assert wgs_qc.get_fasta_total_length(str(empty)) is None
-    assert wgs_qc.get_fasta_total_length(str(tmp_path / "no_such.fasta")) is None
+    assert qc.get_fasta_total_length(str(empty)) is None
+    assert qc.get_fasta_total_length(str(tmp_path / "no_such.fasta")) is None
 
 
 def test_get_read_coverage(tmp_path: Path) -> None:
     fastp_json = _write_fastp_json(tmp_path / "pson.fastp.json", total_bases=721359808)
-    res = wgs_qc.get_read_coverage(str(fastp_json), 7316671)
+    res = qc.get_read_coverage(str(fastp_json), 7316671)
     assert res == {"total_bases": 721359808, "genome_size": 7316671, "coverage": pytest.approx(98.59, abs=0.01)}
 
     for bad_size in (0, None, -100):
-        assert wgs_qc.get_read_coverage(str(fastp_json), bad_size) is None
+        assert qc.get_read_coverage(str(fastp_json), bad_size) is None
 
     no_bases = tmp_path / "no_bases.json"
     no_bases.write_text(json.dumps({"summary": {"after_filtering": {}}}))
-    assert wgs_qc.get_read_coverage(str(no_bases), 5000000) is None
+    assert qc.get_read_coverage(str(no_bases), 5000000) is None
 
 
 def test_print_sample_coverage(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -204,11 +198,11 @@ def test_print_sample_coverage(tmp_path: Path, capsys: pytest.CaptureFixture[str
     ref = tmp_path / "ref.fna"
     ref.write_text(">r1\n" + "A" * 50 + "\n")
 
-    assert run_wgs_sample.print_sample_coverage(str(fastp_json), str(asm), str(tmp_path / "missing.fna")) is None
+    assert run_sample.print_sample_coverage(str(fastp_json), str(asm), str(tmp_path / "missing.fna")) is None
     out = capsys.readouterr().out.splitlines()
     assert "COVERAGE: 10.0x vs assembly (1,000 bases after fastp / 100 bp)" in out
     assert any(line.startswith("Warning: COVERAGE vs reference skipped") for line in out)
 
-    run_wgs_sample.print_sample_coverage(str(fastp_json), str(asm), str(ref))
+    run_sample.print_sample_coverage(str(fastp_json), str(asm), str(ref))
     out = capsys.readouterr().out
     assert f"COVERAGE: 20.0x vs reference (1,000 bases after fastp / 50 bp, {ref})" in out

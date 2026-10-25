@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from nifpredict.common import paths
 import json
 import os
 import subprocess
@@ -10,8 +11,8 @@ from pathlib import Path
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[2]
-FIXTURES = ROOT / "tests" / "fixtures"
+ROOT = paths.REPO_ROOT
+FIXTURES = paths.FIXTURES_DIR
 
 
 def test_cli_returns_nonzero_and_writes_report_on_validation_error(
@@ -39,7 +40,7 @@ def test_cli_returns_nonzero_and_writes_report_on_validation_error(
     completed = subprocess.run(
         [
             sys.executable,
-            str(ROOT / "scripts" / "label_dataset.py"),
+            str(paths.ML_SCRIPTS_DIR / "label_dataset.py"),
             "--features",
             str(FIXTURES / "feature_matrix.csv"),
             "--labels",

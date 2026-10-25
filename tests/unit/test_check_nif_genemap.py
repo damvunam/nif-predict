@@ -6,12 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from nifpredict.check_nif import is_nif_present_assembly, load_gene_map, summarize_tblastn
+from nifpredict.common import paths
+from nifpredict.nif.check_nif import is_nif_present_assembly, load_gene_map, summarize_tblastn
 
-# Real 171-protein reference set (W4e). Lives only on the local machine (results/ is git-ignored).
-# FIX (W15): nif_check_v2/ is deleted; nif_check_w4f/ holds the identical file (md5 e4a328f9...)
-# REAL_REF = Path(__file__).resolve().parents[2] / "nifpredict" / "results" / "nif_check_v2" / "nif_ref_swissprot.faa"
-REAL_REF = Path(__file__).resolve().parents[2] / "nifpredict" / "results" / "nif_check_w4f" / "nif_ref_swissprot.faa"
+# Real 171-protein reference set (W4e, MANIFEST row NIF_REF_171, md5 e4a328f9...). Local only (data/public is git-ignored).
+REAL_REF = paths.NIF_REF_FAA
 
 HEADERS = {
     "sp|P00459|NIFH1_AZOVI": ("GN=nifH1", "nifH"),

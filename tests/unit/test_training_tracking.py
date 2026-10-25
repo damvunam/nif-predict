@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from nifpredict.common import paths
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -11,8 +12,8 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from nifpredict.evaluation import GroupedCVConfig
-from nifpredict.workflows.training import (
+from nifpredict.ml.evaluation import GroupedCVConfig
+from nifpredict.ml.workflows.training import (
     MLflowTrackingConfig,
     MLflowTrackingResult,
     TrainingWorkflowConfig,
@@ -21,7 +22,7 @@ from nifpredict.workflows.training import (
     write_tracking_receipt,
 )
 
-FIXTURE_PATH = Path(__file__).parents[1] / "fixtures" / "grouped_training_dataset.csv"
+FIXTURE_PATH = paths.FIXTURES_DIR / "grouped_training_dataset.csv"
 
 
 class FakeRun:

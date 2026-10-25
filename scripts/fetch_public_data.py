@@ -6,6 +6,8 @@ Each manifest row carries a fetch_cmd template with placeholders:
   {accessions_file} file listing every accession of the row's group (group download)
 Rows of the same group that share one fetch_cmd are fetched once.
 
+Run from the repo root: PYTHONPATH=. .venv/bin/python scripts/fetch_public_data.py ...
+
 Examples:
   python scripts/fetch_public_data.py --list
   python scripts/fetch_public_data.py --verify                      # md5 of files on disk; absent files = MISSING, not FAIL
@@ -23,8 +25,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
-MANIFEST = REPO / "data" / "public" / "MANIFEST.tsv"
+from nifpredict.common import paths
+
+REPO = paths.REPO_ROOT
+MANIFEST = paths.MANIFEST
 
 
 def read_manifest(path: Path) -> list[dict]:

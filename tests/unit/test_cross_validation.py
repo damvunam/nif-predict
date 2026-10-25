@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from nifpredict.common import paths
 from pathlib import Path
 from typing import Any
 
@@ -11,21 +12,21 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC
 
-import nifpredict.evaluation.cross_validation as cv_module
-from nifpredict.evaluation import (
+import nifpredict.ml.evaluation.cross_validation as cv_module
+from nifpredict.ml.evaluation import (
     GroupedCVConfig,
     GroupedCVValidationError,
     generate_fold_manifest,
     run_grouped_cross_validation,
 )
-from nifpredict.models import (
+from nifpredict.ml.models import (
     LABEL_MAPPING,
     TrainingResult,
     prepare_training_data,
 )
 
 FIXTURE_PATH = (
-    Path(__file__).parents[1] / "fixtures" / "grouped_training_dataset.csv"
+    paths.FIXTURES_DIR / "grouped_training_dataset.csv"
 )
 
 

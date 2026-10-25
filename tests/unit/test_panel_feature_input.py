@@ -9,8 +9,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from nifpredict.features.gff_mapping import parse_gff3
-from nifpredict.workflows.feature_matrix.panel_hits import (
+from nifpredict.ml.features.gff_mapping import parse_gff3
+from nifpredict.ml.workflows.feature_matrix.panel_hits import (
     FEATURE_HIT_COLUMNS,
     PANEL_HIT_COLUMNS,
     PanelFeatureInputError,

@@ -3,18 +3,11 @@
 from __future__ import annotations
 
 import gzip
-import sys
 from pathlib import Path
 
 import pytest
 
-# wgs_qc.py / run_wgs_sample.py import sibling modules by bare name (cwd = nifpredict/)
-NIFPREDICT_DIR = Path(__file__).resolve().parents[2] / "nifpredict"
-sys.path.insert(0, str(NIFPREDICT_DIR))
-
-import run_wgs_sample  # noqa: E402
-import wgs_loader  # noqa: E402
-import wgs_qc  # noqa: E402
+from nifpredict.wgs import loader, qc, run_sample
 
 
 def _touch(path: Path) -> Path:
@@ -46,7 +39,7 @@ def _write_fastq(path: Path, read_lengths: list[int]) -> Path:
 
 
 # ==============================================================================
-# A. run_wgs_sample.get_sample_raw_reads(data_dir, sample_name) & get_mate_number
+# A. run_sample.get_sample_raw_reads(data_dir, sample_name) & get_mate_number
 # ==============================================================================
 
 
@@ -54,7 +47,7 @@ def test_get_sample_raw_reads_standard_pair_returns_r1_then_r2(tmp_path: Path) -
     """A1: Directory with X35_1.fq.gz and X35_2.fq.gz returns (r1, r2) in mate order."""
     r1 = _touch(tmp_path / "X35_1.fq.gz")
     r2 = _touch(tmp_path / "X35_2.fq.gz")
-    assert run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(r1), str(r2))
+    assert run_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(r1), str(r2))
 
 
 @pytest.mark.parametrize("sep", ["_", ".", "-"])
@@ -62,7 +55,7 @@ def test_get_sample_raw_reads_accepts_valid_separators(tmp_path: Path, sep: str)
     """A2: Valid separators '_', '.', '-' immediately after sample_name are accepted."""
     r1 = _touch(tmp_path / f"X35{sep}R1.fastq.gz")
     r2 = _touch(tmp_path / f"X35{sep}R2.fastq.gz")
-    assert run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(r1), str(r2))
+    assert run_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(r1), str(r2))
 
 
 def test_get_sample_raw_reads_prefix_collision_both_samples_present(
@@ -76,7 +69,7 @@ def test_get_sample_raw_reads_prefix_collision_both_samples_present(
     x13_1 = _touch(tmp_path / "X13_1.fq.gz")
     x13_2 = _touch(tmp_path / "X13_2.fq.gz")
 
-    res = run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X1")
+    res = run_sample.get_sample_raw_reads(str(tmp_path), "X1")
     assert res == (str(x1_1), str(x1_2))
 
     out_lines = capsys.readouterr().out.splitlines()
@@ -93,7 +86,7 @@ def test_get_sample_raw_reads_prefix_collision_only_longer_sample_present(
     _touch(tmp_path / "X21_1.fq.gz")
     _touch(tmp_path / "X21_2.fq.gz")
 
-    res = run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X2")
+    res = run_sample.get_sample_raw_reads(str(tmp_path), "X2")
     assert res == (None, None)
 
     out_lines = capsys.readouterr().out.splitlines()
@@ -105,7 +98,7 @@ def test_get_sample_raw_reads_no_matching_files_returns_none_tuple(
 ) -> None:
     """A5: No matching files in directory -> returns (None, None)."""
     _touch(tmp_path / "OTHER_1.fq.gz")
-    res = run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35")
+    res = run_sample.get_sample_raw_reads(str(tmp_path), "X35")
     assert res == (None, None)
     out = capsys.readouterr().out
     assert "Error: No fastq files found for 'X35'" in out
@@ -119,7 +112,7 @@ def test_get_sample_raw_reads_three_matching_files_returns_none_tuple(
     _touch(tmp_path / "X35_2.fq.gz")
     _touch(tmp_path / "X35_3.fq.gz")
 
-    res = run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35")
+    res = run_sample.get_sample_raw_reads(str(tmp_path), "X35")
     assert res == (None, None)
 
     out_lines = capsys.readouterr().out.splitlines()
@@ -133,7 +126,7 @@ def test_get_sample_raw_reads_rejects_unnumbered_bare_sample_file(
     _touch(tmp_path / "X35.fq")
     _touch(tmp_path / "X35_2.fq")
 
-    res = run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35")
+    res = run_sample.get_sample_raw_reads(str(tmp_path), "X35")
     assert res == (None, None)
 
     out_lines = capsys.readouterr().out.splitlines()
@@ -145,7 +138,7 @@ def test_get_sample_raw_reads_mixed_separators_returns_true_r1_then_r2(tmp_path:
     r1_underscore = _touch(tmp_path / "X_1.fq.gz")
     r2_dot = _touch(tmp_path / "X.2.fq.gz")
 
-    res = run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X")
+    res = run_sample.get_sample_raw_reads(str(tmp_path), "X")
     assert res == (str(r1_underscore), str(r2_dot))
 
 
@@ -154,16 +147,16 @@ def test_find_raw_reads_supported_extensions(tmp_path: Path, ext: str) -> None:
     """A9a: All 4 supported extensions (.fastq, .fastq.gz, .fq, .fq.gz) are found by find_raw_reads."""
     f1 = _touch(tmp_path / f"X35_1{ext}")
     f2 = _touch(tmp_path / f"X35_2{ext}")
-    assert wgs_loader.find_raw_reads(str(tmp_path), "X35") == [str(f1), str(f2)]
-    assert run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(f1), str(f2))
+    assert loader.find_raw_reads(str(tmp_path), "X35") == [str(f1), str(f2)]
+    assert run_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(f1), str(f2))
 
 
 def test_find_raw_reads_unsupported_extension_ignored(tmp_path: Path) -> None:
     """A9b: Unsupported extensions (e.g., .txt) are ignored."""
     _touch(tmp_path / "X35_1.txt")
     _touch(tmp_path / "X35_2.txt")
-    assert wgs_loader.find_raw_reads(str(tmp_path), "X35") is None
-    assert run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35") == (None, None)
+    assert loader.find_raw_reads(str(tmp_path), "X35") is None
+    assert run_sample.get_sample_raw_reads(str(tmp_path), "X35") == (None, None)
 
 
 @pytest.mark.parametrize(
@@ -180,14 +173,14 @@ def test_find_raw_reads_unsupported_extension_ignored(tmp_path: Path) -> None:
 )
 def test_get_mate_number_examples(filename: str, expected: int | None) -> None:
     """A10: get_mate_number returns 1, 2, or None across the 7 spec examples."""
-    assert run_wgs_sample.get_mate_number(filename, "X35") == expected
+    assert run_sample.get_mate_number(filename, "X35") == expected
 
 
 def test_get_sample_raw_reads_r2_sorts_before_r1_still_returns_r1_first(tmp_path: Path) -> None:
     """A11: X35.R2.fq.gz sorts before X35_R1.fq.gz, but get_sample_raw_reads returns (X35_R1, X35.R2)."""
     r2 = _touch(tmp_path / "X35.R2.fq.gz")
     r1 = _touch(tmp_path / "X35_R1.fq.gz")
-    assert run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(r1), str(r2))
+    assert run_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(r1), str(r2))
 
 
 def test_get_sample_raw_reads_duplicate_mate_numbers_rejected(
@@ -197,7 +190,7 @@ def test_get_sample_raw_reads_duplicate_mate_numbers_rejected(
     _touch(tmp_path / "X35_1.fq.gz")
     _touch(tmp_path / "X35-1.fq.gz")
 
-    res = run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35")
+    res = run_sample.get_sample_raw_reads(str(tmp_path), "X35")
     assert res == (None, None)
 
     out_lines = capsys.readouterr().out.splitlines()
@@ -208,26 +201,26 @@ def test_get_sample_raw_reads_illumina_style_filenames(tmp_path: Path) -> None:
     """A13: Illumina-style filenames X35_S1_L001_R1_001.fastq.gz + R2 -> returns (R1, R2)."""
     r1 = _touch(tmp_path / "X35_S1_L001_R1_001.fastq.gz")
     r2 = _touch(tmp_path / "X35_S1_L001_R2_001.fastq.gz")
-    assert run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(r1), str(r2))
+    assert run_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(r1), str(r2))
 
 
 def test_get_sample_raw_reads_date_stamped_filenames(tmp_path: Path) -> None:
     """A14 (Claude, W14 review): digits inside a longer number (e.g. a date) are not mate numbers."""
     r1 = _touch(tmp_path / "X35_20231001_R1.fq.gz")
     r2 = _touch(tmp_path / "X35_20231001_R2.fq.gz")
-    assert run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(r1), str(r2))
+    assert run_sample.get_sample_raw_reads(str(tmp_path), "X35") == (str(r1), str(r2))
 
 
 def test_get_sample_raw_reads_sample_name_containing_mate_like_token(tmp_path: Path) -> None:
     """A15 (Claude, W14 review): the sample name itself is stripped before looking for the mate number (sample 'X35-2')."""
     r1 = _touch(tmp_path / "X35-2_R1.fq.gz")
     r2 = _touch(tmp_path / "X35-2_R2.fq.gz")
-    assert run_wgs_sample.get_mate_number(str(r2), "X35-2") == 2
-    assert run_wgs_sample.get_sample_raw_reads(str(tmp_path), "X35-2") == (str(r1), str(r2))
+    assert run_sample.get_mate_number(str(r2), "X35-2") == 2
+    assert run_sample.get_sample_raw_reads(str(tmp_path), "X35-2") == (str(r1), str(r2))
 
 
 # ==============================================================================
-# B. run_wgs_sample.determine_platform(platform, r1_path)
+# B. run_sample.determine_platform(platform, r1_path)
 # ==============================================================================
 
 
@@ -238,15 +231,15 @@ def test_determine_platform_short_skips_peek_read_length(
     def _boom(*args: object, **kwargs: object) -> None:
         raise AssertionError("peek_read_length must not be called when platform='short'")
 
-    monkeypatch.setattr(run_wgs_sample, "peek_read_length", _boom)
+    monkeypatch.setattr(run_sample, "peek_read_length", _boom)
     missing_path = str(tmp_path / "nonexistent_R1.fq.gz")
-    assert run_wgs_sample.determine_platform("short", missing_path) == "short"
+    assert run_sample.determine_platform("short", missing_path) == "short"
 
 
 def test_determine_platform_auto_150bp_returns_short(tmp_path: Path) -> None:
     """B2: platform='auto' on FASTQ with 150 bp reads -> returns 'short'."""
     fq = _write_fastq(tmp_path / "r1.fq", [150, 150])
-    assert run_wgs_sample.determine_platform("auto", str(fq)) == "short"
+    assert run_sample.determine_platform("auto", str(fq)) == "short"
 
 
 def test_determine_platform_auto_boundary_299_vs_300(
@@ -254,11 +247,11 @@ def test_determine_platform_auto_boundary_299_vs_300(
 ) -> None:
     """B3: Boundary 300 bp: 299 bp -> 'short'; 300 bp -> None with 'Error: long reads detected'."""
     fq_299 = _write_fastq(tmp_path / "r299.fq", [299])
-    assert run_wgs_sample.determine_platform("auto", str(fq_299)) == "short"
+    assert run_sample.determine_platform("auto", str(fq_299)) == "short"
     capsys.readouterr()
 
     fq_300 = _write_fastq(tmp_path / "r300.fq", [300])
-    assert run_wgs_sample.determine_platform("auto", str(fq_300)) is None
+    assert run_sample.determine_platform("auto", str(fq_300)) is None
     out = capsys.readouterr().out
     assert "Error: long reads detected" in out
 
@@ -268,13 +261,13 @@ def test_determine_platform_auto_empty_fastq_returns_none(
 ) -> None:
     """B4: platform='auto' on empty FASTQ -> None with 'Error: could not determine read length'."""
     empty_fq = _write_fastq(tmp_path / "empty.fq", [])
-    assert run_wgs_sample.determine_platform("auto", str(empty_fq)) is None
+    assert run_sample.determine_platform("auto", str(empty_fq)) is None
     out = capsys.readouterr().out
     assert "Error: could not determine read length" in out
 
 
 # ==============================================================================
-# C. wgs_qc.peek_read_length(fastq_path, n_reads=100)
+# C. qc.peek_read_length(fastq_path, n_reads=100)
 # ==============================================================================
 
 
@@ -283,8 +276,8 @@ def test_peek_read_length_plain_and_gzip_identical(tmp_path: Path) -> None:
     fq_plain = _write_fastq(tmp_path / "sample.fq", [100, 150, 200])
     fq_gz = _write_fastq(tmp_path / "sample.fq.gz", [100, 150, 200])
 
-    assert wgs_qc.peek_read_length(str(fq_plain)) == 150.0
-    assert wgs_qc.peek_read_length(str(fq_gz)) == 150.0
+    assert qc.peek_read_length(str(fq_plain)) == 150.0
+    assert qc.peek_read_length(str(fq_gz)) == 150.0
 
 
 def test_peek_read_length_stops_at_n_reads_100(tmp_path: Path) -> None:
@@ -292,7 +285,7 @@ def test_peek_read_length_stops_at_n_reads_100(tmp_path: Path) -> None:
     # First 100 reads = 100 bp (avg 100.0); next 50 reads = 250 bp (overall avg would be 150.0)
     lengths = [100] * 100 + [250] * 50
     fq = _write_fastq(tmp_path / "reads150.fq", lengths)
-    assert wgs_qc.peek_read_length(str(fq), n_reads=100) == 100.0
+    assert qc.peek_read_length(str(fq), n_reads=100) == 100.0
 
 
 def test_peek_read_length_empty_file_returns_none(
@@ -300,7 +293,7 @@ def test_peek_read_length_empty_file_returns_none(
 ) -> None:
     """C3: Empty file returns None."""
     empty = _write_fastq(tmp_path / "empty.fq", [])
-    assert wgs_qc.peek_read_length(str(empty)) is None
+    assert qc.peek_read_length(str(empty)) is None
     out = capsys.readouterr().out
     assert f"Error: No reads found in {empty}" in out
 
@@ -311,4 +304,4 @@ def test_peek_read_length_missing_file_raises_filenotfounderror(tmp_path: Path) 
     # so passing a non-existent path raises FileNotFoundError instead of returning None.
     missing = tmp_path / "does_not_exist.fq.gz"
     with pytest.raises(FileNotFoundError):
-        wgs_qc.peek_read_length(str(missing))
+        qc.peek_read_length(str(missing))

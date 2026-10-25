@@ -7,7 +7,7 @@ import math
 import pandas as pd
 import pytest
 
-from nifpredict.models.metrics import (
+from nifpredict.ml.models.metrics import (
     AGGREGATE_METRIC_COLUMNS,
     MetricError,
     aggregate_cross_validation_metrics,

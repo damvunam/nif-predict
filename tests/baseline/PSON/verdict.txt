@@ -1,0 +1,5 @@
+Reference proteins per gene: {'nifH': 113, 'nifD': 27, 'nifK': 19}
+  nifH: OK (83.6% id, 98% cov, 28:79284-80144)
+  nifD: OK (64.9% id, 98% cov, 28:80285-81730)
+  nifK: OK (53.7% id, 96% cov, 28:81751-83292)
+VERDICT: PRESENT (nifHDK clustered)

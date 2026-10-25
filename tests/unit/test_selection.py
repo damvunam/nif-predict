@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from nifpredict.models.selection import (
+from nifpredict.ml.models.selection import (
     ModelSelectionError,
     select_baseline_candidate,
 )

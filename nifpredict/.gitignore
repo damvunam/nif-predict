@@ -1,5 +1,0 @@
-
-# raw sequencing reads - never commit these
-resources/raw/
-*.fq.gz
-*.fastq.gz

@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nifpredict.models import train_classifier
-from nifpredict.models.persistence import (
+from nifpredict.ml.models import train_classifier
+from nifpredict.ml.models.persistence import (
     MODEL_ARTIFACT_VERSION,
     ModelArtifactError,
     load_model_artifact,

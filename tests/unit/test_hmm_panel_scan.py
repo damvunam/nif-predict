@@ -13,14 +13,14 @@ from typing import Self
 import pytest
 import yaml
 
-import nifpredict.evaluation.hmm_panel_scan as scan_module
-from nifpredict.evaluation._hmm_panel_manifest import load_panel_spec
-from nifpredict.evaluation._hmm_panel_scan_types import (
+import nifpredict.ml.evaluation.hmm_panel_scan as scan_module
+from nifpredict.ml.evaluation._hmm_panel_manifest import load_panel_spec
+from nifpredict.ml.evaluation._hmm_panel_scan_types import (
     FastaScanResult,
     PanelScanHit,
 )
-from nifpredict.evaluation._hmm_panel_types import ModelInputAudit
-from nifpredict.evaluation.hmm_panel_scan import (
+from nifpredict.ml.evaluation._hmm_panel_types import ModelInputAudit
+from nifpredict.ml.evaluation.hmm_panel_scan import (
     HIT_COLUMNS,
     HMMPanelAuditError,
     load_scan_accessions,

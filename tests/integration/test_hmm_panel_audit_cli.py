@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from nifpredict.common import paths
 import hashlib
 import json
 import os
@@ -11,8 +12,8 @@ from pathlib import Path
 
 import yaml
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "audit_hmm_panel.py"
+ROOT = paths.REPO_ROOT
+SCRIPT = paths.ML_SCRIPTS_DIR / "audit_hmm_panel.py"
 
 
 def _sha256(content: str) -> str:

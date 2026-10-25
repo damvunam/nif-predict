@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from nifpredict.common import paths
 import gzip
 import hashlib
 import io
@@ -11,7 +12,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from nifpredict.evaluation.hmm_panel_audit import (
+from nifpredict.ml.evaluation.hmm_panel_audit import (
     AcceptedProteinHit,
     HMMPanelAuditError,
     NearDuplicatePolicy,
@@ -29,8 +30,8 @@ from nifpredict.evaluation.hmm_panel_audit import (
     sha256_file,
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-VERSIONED_PANEL_CONFIG = PROJECT_ROOT / "config" / "hmm_panel_pgap_19.yaml"
+PROJECT_ROOT = paths.REPO_ROOT
+VERSIONED_PANEL_CONFIG = paths.HMM_PANEL_CONFIG
 
 
 def _model_mapping(
@@ -280,7 +281,7 @@ def test_download_panel_inputs_writes_only_manifest_models(
         return io.BytesIO(responses[url])
 
     monkeypatch.setattr(
-        "nifpredict.evaluation.hmm_panel_audit.urllib.request.urlopen",
+        "nifpredict.ml.evaluation.hmm_panel_audit.urllib.request.urlopen",
         fake_urlopen,
     )
 
@@ -324,7 +325,7 @@ def test_download_panel_inputs_reuses_checksum_valid_files(
         raise AssertionError(f"Unexpected download: {url}, timeout={timeout}")
 
     monkeypatch.setattr(
-        "nifpredict.evaluation.hmm_panel_audit.urllib.request.urlopen",
+        "nifpredict.ml.evaluation.hmm_panel_audit.urllib.request.urlopen",
         unexpected_urlopen,
     )
 
@@ -350,7 +351,7 @@ def test_download_panel_inputs_removes_checksum_failed_temporary_file(
         return io.BytesIO(b"unexpected content")
 
     monkeypatch.setattr(
-        "nifpredict.evaluation.hmm_panel_audit.urllib.request.urlopen",
+        "nifpredict.ml.evaluation.hmm_panel_audit.urllib.request.urlopen",
         fake_urlopen,
     )
     root = tmp_path / "panel-inputs"
@@ -382,7 +383,7 @@ def test_download_panel_inputs_refuses_mismatched_existing_file(
         raise AssertionError(f"Unexpected download: {url}, timeout={timeout}")
 
     monkeypatch.setattr(
-        "nifpredict.evaluation.hmm_panel_audit.urllib.request.urlopen",
+        "nifpredict.ml.evaluation.hmm_panel_audit.urllib.request.urlopen",
         unexpected_urlopen,
     )
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from nifpredict.common import paths
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -9,11 +10,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-import nifpredict.workflows.training.refit as refit_module
-import nifpredict.workflows.training.service as service_module
-from nifpredict.evaluation import GroupedCVConfig, generate_fold_manifest
-from nifpredict.models import load_model_artifact
-from nifpredict.workflows.training import (
+import nifpredict.ml.workflows.training.refit as refit_module
+import nifpredict.ml.workflows.training.service as service_module
+from nifpredict.ml.evaluation import GroupedCVConfig, generate_fold_manifest
+from nifpredict.ml.models import load_model_artifact
+from nifpredict.ml.workflows.training import (
     REFIT_ARTIFACT_FILENAMES,
     RUN_ARTIFACT_FILENAMES,
     TrainingArtifactError,
@@ -23,9 +24,9 @@ from nifpredict.workflows.training import (
     run_training_workflow,
     validate_run_name,
 )
-from nifpredict.workflows.training.artifacts import AtomicRunDirectory
+from nifpredict.ml.workflows.training.artifacts import AtomicRunDirectory
 
-FIXTURE_PATH = Path(__file__).parents[1] / "fixtures" / "grouped_training_dataset.csv"
+FIXTURE_PATH = paths.FIXTURES_DIR / "grouped_training_dataset.csv"
 
 
 @pytest.fixture

@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+from nifpredict.common import paths
 import importlib.util
 from pathlib import Path
 from types import ModuleType
 
 import pytest
 
-from nifpredict.evaluation.hmm_panel_scan import PanelScanResult
+from nifpredict.ml.evaluation.hmm_panel_scan import PanelScanResult
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "scan_hmm_panel.py"
+ROOT = paths.REPO_ROOT
+SCRIPT = paths.ML_SCRIPTS_DIR / "scan_hmm_panel.py"
 
 
 def _load_cli_module() -> ModuleType:

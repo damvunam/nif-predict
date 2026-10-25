@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
+from nifpredict.common import paths
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
-import nifpredict.data.labeling as legacy_labeling
-import nifpredict.labeling as new_labeling
-from nifpredict.labeling import (
+import nifpredict.ml.data.labeling as legacy_labeling
+import nifpredict.ml.labeling as new_labeling
+from nifpredict.ml.labeling import (
     MANIFEST_COLUMNS,
     LabelingValidationError,
     build_labeled_datasets,
 )
 
-ROOT = Path(__file__).resolve().parents[2]
-FIXTURES = ROOT / "tests" / "fixtures"
+ROOT = paths.REPO_ROOT
+FIXTURES = paths.FIXTURES_DIR
 MANIFEST_TEMPLATE = ROOT / "data" / "labels" / "label_manifest.csv"
 
 

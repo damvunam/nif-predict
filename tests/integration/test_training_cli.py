@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from nifpredict.common import paths
 import os
 import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-FIXTURE = ROOT / "tests" / "fixtures" / "grouped_training_dataset.csv"
+ROOT = paths.REPO_ROOT
+FIXTURE = paths.FIXTURES_DIR / "grouped_training_dataset.csv"
 
 
 def _environment() -> dict[str, str]:
@@ -21,7 +22,7 @@ def test_cli_runs_offline_and_writes_training_artifacts(tmp_path: Path) -> None:
     completed = subprocess.run(
         [
             sys.executable,
-            str(ROOT / "scripts" / "train_pipeline.py"),
+            str(paths.ML_SCRIPTS_DIR / "train_pipeline.py"),
             "--input",
             str(FIXTURE),
             "--run-name",
@@ -55,7 +56,7 @@ def test_cli_returns_two_for_missing_input(tmp_path: Path) -> None:
     completed = subprocess.run(
         [
             sys.executable,
-            str(ROOT / "scripts" / "train_pipeline.py"),
+            str(paths.ML_SCRIPTS_DIR / "train_pipeline.py"),
             "--input",
             str(tmp_path / "missing.csv"),
             "--run-name",

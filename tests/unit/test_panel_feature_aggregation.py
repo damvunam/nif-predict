@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from nifpredict.features.cluster_filter import ClusterFilter
-from nifpredict.features.feature_extractor import MarkerClusterExtractor
+from nifpredict.ml.features.cluster_filter import ClusterFilter
+from nifpredict.ml.features.feature_extractor import MarkerClusterExtractor
 
 
 def test_reductase_role_contributes_to_legacy_nifh_feature_group() -> None:

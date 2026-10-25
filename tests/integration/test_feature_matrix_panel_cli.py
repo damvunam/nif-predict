@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from nifpredict.common import paths
 import csv
 import json
 import os
@@ -12,10 +13,10 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from nifpredict.workflows.feature_matrix.panel_hits import PANEL_HIT_COLUMNS
+from nifpredict.ml.workflows.feature_matrix.panel_hits import PANEL_HIT_COLUMNS
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = paths.REPO_ROOT
 POSITIVE_ACCESSION = "GCF_000000001.1"
 ZERO_HIT_ACCESSION = "GCA_000000002.1"
 
@@ -28,7 +29,7 @@ def _environment() -> dict[str, str]:
 
 def _write_config(tmp_path: Path) -> Path:
     config = yaml.safe_load(
-        (ROOT / "config" / "config.yaml").read_text(encoding="utf-8")
+        (paths.CONFIG_YAML).read_text(encoding="utf-8")
     )
     config["paths"]["base_dir"] = str(tmp_path)
     config["computing"]["max_threads"] = 1
@@ -177,7 +178,7 @@ def _command(
 ) -> list[str]:
     return [
         sys.executable,
-        str(ROOT / "scripts" / "build_feature_matrix.py"),
+        str(paths.ML_SCRIPTS_DIR / "build_feature_matrix.py"),
         "--config",
         str(config_path),
         "--input-file",

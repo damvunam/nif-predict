@@ -1,0 +1,5 @@
+Reference proteins per gene: {'nifH': 113, 'nifD': 27, 'nifK': 19}
+  nifH: weak hit (26.6% id, 89% cov) - likely paralog
+  nifD: no hit
+  nifK: no hit
+VERDICT: ABSENT
