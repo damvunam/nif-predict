@@ -1,129 +1,62 @@
-# NifPredict: Genome-Based Nitrogen Fixation Prediction
+# NifPredict
 
-A bioinformatics project in a master's thesis
-Year: 2026-2027
+Detect nitrogen-fixation (nif) genes in bacterial genomes, from raw WGS reads to a nifH/nifD/nifK verdict.
+MSc thesis project, 2026–2027. The ML benchmark (`nifpredict/ml/`) is paused.
 
-## Table of Contents
-
-* [Overview](#overview)
-* [Developments](#developments)
-* [Installation & Requirements](#installation--requirements)
-* [Project Structure](#project-structure)
-* [Usage](#usage)
-
-  * [Data Acquisition](#1-data-acquisition)
-  * [Genome Annotation](#2-genome-annotation)
-  * [Feature Extraction](#3-feature-extraction)
-  * [Dataset Labeling](#4-dataset-labeling)
-  * [Model Training](#5-model-training)
-  * [Model Evaluation](#6-model-evaluation)
-* [Methodology](#methodology)
-
-  * [Nif Gene Detection](#1-nif-gene-detection)
-  * [Gene Organization and Synteny](#2-gene-organization-and-synteny)
-  * [Feature Engineering](#3-feature-engineering)
-  * [Machine Learning](#4-machine-learning)
-  * [Model Evaluation](#5-model-evaluation)
-* [Current Status](#current-status)
-* [Limitations](#limitations)
-* [Roadmap](#roadmap)
-* [Citation](#citation)
-* [License](#license)
-
-
-## Overview
-
-<!--
-What problem does NifPredict solve?
-
-Suggested points:
-- What is biological nitrogen fixation (BNF)?
-- Why is genome-based prediction useful?
-- What problem does NifPredict address?
-- What are the main ideas behind NifPredict?
--->
-
-TODO
-
-
-## Developments
-
-* *Jul 25, 2026*: First working version
-
-## Installation & Requirements
-
-### 1. Requirements
-
-Install the required Python packages using pip:
-
-```bash
-pip install biopython numpy pandas scipy scikit-learn pyhmmer matplotlib pyyaml joblib pyarrow tqdm requests
-``` 
-
-### 2. Project structure
+## Layout
 
 ```text
 nif-predict/
-├── config/
-├── data/
 ├── nifpredict/
-│   ├── annotation/
-│   ├── data/
-│   ├── evaluation/
-│   ├── features/
-│   ├── labeling/
-│   ├── models/
-│   ├── pipeline/
-│   └── utils/
-├── scripts/
-├── tests/
-├── results/
-├── pyproject.toml
-└── README.md
+│   ├── common/      paths.py (every path), config.py, logger.py
+│   ├── wgs/         run_sample.py (runner), loader, qc, assembly, annotation, contig_stats
+│   ├── nif/         check_nif.py (tblastn on assemblies, DIAMOND on reads)
+│   └── ml/          data, features, labeling, models, evaluation, workflows, predictor (paused)
+├── scripts/         fetch_public_data.py, check_baseline.sh, ml/ (ML entry points)
+├── tests/           unit/, integration/, fixtures/, baseline/ (expected results of 5 controls)
+├── config/          config.yaml, hmm_panel_pgap_19.yaml (ML)
+├── data/public/     public inputs, data/public/<kind>/<accession>/ (git-ignored; MANIFEST.tsv is tracked)
+└── results/         all outputs, results/<pipeline>/<sample>/<step>/ (git-ignored)
 ```
 
-## Usage
+Rules: run everything from the repo root; imports are absolute (`nifpredict.wgs...`); no path is hard-coded
+outside `nifpredict/common/paths.py`.
 
-### 1. Data Acquisition
+## Setup
 
-currently being finalized...
+- Python ≥ 3.10 venv for code and tests: `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
+- Conda env with the external tools (here `prokka_test`): fastp, unicycler, quast, busco, skani, BLAST+
+  (makeblastdb, tblastn), DIAMOND, NCBI `datasets`; prokka/bakta for annotation.
 
-### 2. Genome Annotation
+## Public data
 
-currently being finalized...
+`data/public/MANIFEST.tsv` lists every public input (accession, source, date, md5, download or cut command).
 
-### 3. Feature Extraction
+```bash
+PYTHONPATH=. .venv/bin/python scripts/fetch_public_data.py --verify            # md5 of what is on disk
+PYTHONPATH=. .venv/bin/python scripts/fetch_public_data.py --id PSON_RAW_1 PSON_RAW_2 PSON_1 PSON_2
+PYTHONPATH=. .venv/bin/python scripts/fetch_public_data.py --group controls --dest /tmp/fetch_test --dry-run
+```
 
-currently being finalized...
+## Run
 
-### 4. Dataset Labeling
+```bash
+# WGS: QC (gate 1) -> assembly -> QUAST/BUSCO (gate 2) -> contig stats, coverage -> identity (skani)
+python -m nifpredict.wgs.run_sample -s PSON -d data/public/reads/SRR17868980 \
+    -r data/public/genomes/GCF_021312615.1/ncbi_dataset/data/GCF_021312615.1/GCF_021312615.1_ASM2131261v1_genomic.fna
+#   -> results/wgs/PSON/{qc,assembly,assembly_qc,identity}/ ; -n prints the plan without running tools
 
-currently being finalized...
+# nif genes on an assembly (tblastn) or, without -a, on trimmed reads (DIAMOND)
+python -m nifpredict.nif.check_nif -s PSON -a results/wgs/PSON/assembly/assembly.fasta
+#   -> results/nif/PSON/assembly/ (log with VERDICT, tblastn_hits.tsv)
+```
 
-### 5. Model Training
+## Check after any change
 
-currently being finalized...
+```bash
+bash scripts/check_baseline.sh      # in the tools env; pytest uses .venv/bin/python
+```
 
-### 6. Model Evaluation
-
-currently being finalized...
-
-## Methodology
-
-### 1. Genome Data Acquisition
-
-continue
-
-## All-Atom Representation
-
-countinue
-
-### Key Changes
-
-countinue
-
-### Usage
-
-countinue
-
-#### Notes:
+pytest, PSON runner on its existing outputs (must print DONE and create no file), and `check_nif` on the
+5 controls (CTRL_AVIN, CTRL_PWLY, CTRL_BSUB, PSON, PSON_REF) compared with `tests/baseline/`.
+Output: `results/checks/<timestamp>/summary.txt`.

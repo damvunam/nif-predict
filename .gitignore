@@ -1,68 +1,53 @@
-# Python environments
+# GitHub holds CODE ONLY: Python, tests (+ tests/baseline), config, scripts, dvc.yaml/dvc.lock, pyproject,
+# README.md, .gitignore and data/public/MANIFEST.tsv. Data, outputs and notes stay local.
+
+# Python, tools, editors
 .venv/
 venv/
 env/
-
-# Python artifacts
 __pycache__/
 *.pyc
 *.egg-info/
-.build/
+build/
 dist/
-
-# Test and coverage artifacts
 .coverage
 .coverage.*
 htmlcov/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-
-# IDE and operating system
 .vscode/
 .idea/
 .DS_Store
-
-# Environment variables
 .env
 
-# Local only (never commit)
-test_data/
+# Local notes (never committed)
+.claude/
+review/
+docs/
 GEMINI.md
 plan.md
-# Claude Code local config (sub-agent definitions), not part of the project
-.claude/
-# Review notes from the review project; local only
-review/
-
-# ---------------------------------------------------------------------------
-# GitHub holds CODE ONLY (.py, tests, config, dvc.yaml, pyproject/requirements,
-# README.md, .gitignore). Outputs, task specs, run scripts and notes stay local.
-# ---------------------------------------------------------------------------
-logs/*
-annotation/
-results/
-docs/
-# every Markdown file except the root README
 *.md
 !/README.md
 
-# MLOps data governance (unchanged; ML/DVC paused)
-data/*
-# public-data manifest (config, tracked); the data itself stays local
-!data/public/
-data/public/*
-!data/public/MANIFEST.tsv
-**/resources/*
-**/busco_downloads/
+# Outputs: one root, never committed (+ ML run folders)
+/results/
+/models/
+/mlruns/
+/logs/
 
-# ---------------------------------------------------------------------------
-# Data by FILE TYPE, anywhere in the repo. These come AFTER the whitelist, so
-# they win: a read/genome/large file is never committed even inside a
-# whitelisted folder. To commit a small fixture, add "!path/to/file" at the
-# very end of this file.
-# ---------------------------------------------------------------------------
-# reads
+# Data: only the public-data manifest and the small ML config files are tracked
+/data/*
+!/data/public/
+/data/public/*
+!/data/public/MANIFEST.tsv
+!/data/*.dvc
+!/data/batch_accessions.txt
+!/data/labels/
+/data/labels/*
+!/data/labels/label_manifest.csv
+
+# Safety net: sequence/genome/database/archive files are never committed, wherever they are
 *.fq
 *.fastq
 *.fq.gz
@@ -73,7 +58,6 @@ data/public/*
 *.sam
 *.cram
 *.vcf
-# genomes, annotations, assembly graphs
 *.fa
 *.fasta
 *.fna
@@ -87,7 +71,6 @@ data/public/*
 *.gbff
 *.sqn
 *.tbl
-# HMM / BLAST databases
 *.hmm
 *.hmm.gz
 *.h3f
@@ -112,7 +95,6 @@ data/public/*
 *.psq
 *.ptf
 *.pto
-# archives and other large binaries
 *.zip
 *.gz
 *.tar
@@ -122,15 +104,3 @@ data/public/*
 *.parquet
 *.pkl
 *.joblib
-
-# DVC metadata and placeholders
-!data/**/.gitkeep
-!data/**/*.dvc
-
-# accession
-!data/batch_accessions.txt
-
-# Label manifest
-!data/labels/
-data/labels/*
-!data/labels/label_manifest.csv
