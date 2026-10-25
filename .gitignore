@@ -49,6 +49,10 @@ docs/
 
 # MLOps data governance (unchanged; ML/DVC paused)
 data/*
+# public-data manifest (config, tracked); the data itself stays local
+!data/public/
+data/public/*
+!data/public/MANIFEST.tsv
 **/resources/*
 **/busco_downloads/
 
