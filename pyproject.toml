@@ -86,10 +86,6 @@ dvc = [
 # 4. Entry points & package discovery
 # tao cau lenh CLI va cau hinh quet thu muc ma nguon
 
-# cho phep go lenh `nifpredict` truc tiep tu terminal sau khi cai package
-[project.scripts]
-nifpredict = "nifpredict.cli:app"   # tro toi doi tuong `app = Typer()` trong file nifpredict/cli.py
-
 [project.urls]
 Repository = "https://github.com/damvunam/nif-predict"
 
