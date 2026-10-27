@@ -3,6 +3,7 @@ import os
 import csv
 import argparse
 import subprocess
+import sys
 from datetime import datetime
 
 from nifpredict.common import paths
@@ -295,7 +296,7 @@ def is_nif_present_reads(summary,
     return "PRESENT (reads only - confirm with assembly)", reasons
 
 
-if __name__ == "__main__":
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Check whether a WGS sample carries nifH/nifD/nifK.")
     # FIX (W11): -s is required; running without it must not silently fall back to a fixed sample
     parser.add_argument("-s", "--sample", required=True, help="Sample name (required)")
@@ -309,7 +310,7 @@ if __name__ == "__main__":
                         help="Reference NifH/D/K protein FASTA (default: data/public/proteins/nif_ref_171/nif_ref_swissprot.faa)")
     # FIX: default was a fixed 10; never ask for more threads than the machine has
     parser.add_argument("-t", "--threads", type=int, default=min(10, os.cpu_count() or 1), help="Threads (default: min(10, nproc))")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.reads_dir is None:
         args.reads_dir = str(paths.wgs_dir(args.sample, "qc"))
 
@@ -327,46 +328,61 @@ if __name__ == "__main__":
     else:
         write_log(log_path, f"Error: reference file not found: {ref_path} - "
                             "fetch it with: python scripts/fetch_public_data.py --id NIF_REF_171")
-        ref_path = None
-    if ref_path:
-        gene_map = load_gene_map(ref_path)
+        # FIX (MU1): branch (a) - reference file missing or empty, no VERDICT can be produced
+        write_log(log_path, "ERROR: no VERDICT - reference file missing or empty")
+        return 1
+    gene_map = load_gene_map(ref_path)
 
-        # FIX: guard against a silent false ABSENT - if any gene has 0 references
-        # (bad UniProt query / header parsing), no hit can ever be counted for it.
-        ref_counts = {g: list(gene_map.values()).count(g) for g in NIF_GENES}
-        write_log(log_path, f"Reference proteins per gene: {ref_counts}")
-        if min(ref_counts.values()) == 0:
-            write_log(log_path, "Error: a nif gene has 0 reference proteins - result would be meaningless, stopping")
-            ref_path = None
+    # FIX: guard against a silent false ABSENT - if any gene has 0 references
+    # (bad UniProt query / header parsing), no hit can ever be counted for it.
+    ref_counts = {g: list(gene_map.values()).count(g) for g in NIF_GENES}
+    write_log(log_path, f"Reference proteins per gene: {ref_counts}")
+    if min(ref_counts.values()) == 0:
+        write_log(log_path, "Error: a nif gene has 0 reference proteins - result would be meaningless, stopping")
+        # FIX (MU1): branch (b) - a nif gene has 0 reference proteins, no VERDICT can be produced
+        write_log(log_path, "ERROR: no VERDICT - a nif gene has 0 reference proteins")
+        return 1
 
-    if ref_path:
+    if args.assembly and os.path.exists(args.assembly):
+        write_log(log_path, f"Mode: assembly ({args.assembly})")
+        hits_path = run_tblastn(ref_path, args.assembly, out_dir, args.threads, log_path)
+        if hits_path is None:
+            # FIX (MU1): branch (c) - run_tblastn failed (makeblastdb/tblastn error or not in PATH), no VERDICT can be produced
+            write_log(log_path, "ERROR: no VERDICT - tblastn failed")
+            return 1
+        # FIX (W13): check if summarize_tblastn returned None (invalid/old 9-column format) before calling is_nif_present_assembly
+        # verdict, reasons = is_nif_present_assembly(summarize_tblastn(hits_path, gene_map))
+        best_hits = summarize_tblastn(hits_path, gene_map)
+        if best_hits is None:
+            write_log(log_path, "Error: could not summarize tblastn hits - no VERDICT")
+            # FIX (MU1): branch (d) - summarize_tblastn returned None (old 9-column hits), no VERDICT can be produced
+            write_log(log_path, "ERROR: no VERDICT - tblastn hits in old 9-column format")
+            return 1
+        verdict, reasons = is_nif_present_assembly(best_hits)
+    else:
+        if args.assembly:
+            write_log(log_path, f"Warning: assembly not found ({args.assembly}), falling back to reads")
+        reads_paths = [os.path.join(args.reads_dir, f"{args.sample}_R{i}.trim.fastq.gz") for i in (1, 2)]
+        reads_paths = [p for p in reads_paths if os.path.exists(p)]
+        write_log(log_path, f"Mode: reads ({reads_paths})")
+        if not reads_paths:
+            write_log(log_path, f"Error: no trimmed reads found in {args.reads_dir}")
+            # FIX (MU1): branch (e) - no trimmed reads found, no VERDICT can be produced
+            write_log(log_path, "ERROR: no VERDICT - no trimmed reads found")
+            return 1
+        hits_path = run_diamond_reads(ref_path, reads_paths, out_dir, args.threads, log_path)
+        if hits_path is None:
+            # FIX (MU1): branch (f) - run_diamond_reads failed, no VERDICT can be produced
+            write_log(log_path, "ERROR: no VERDICT - diamond reads search failed")
+            return 1
+        verdict, reasons = is_nif_present_reads(summarize_reads(hits_path, gene_map))
 
-        if args.assembly and os.path.exists(args.assembly):
-            write_log(log_path, f"Mode: assembly ({args.assembly})")
-            hits_path = run_tblastn(ref_path, args.assembly, out_dir, args.threads, log_path)
-            if hits_path:
-                # FIX (W13): check if summarize_tblastn returned None (invalid/old 9-column format) before calling is_nif_present_assembly
-                # verdict, reasons = is_nif_present_assembly(summarize_tblastn(hits_path, gene_map))
-                best_hits = summarize_tblastn(hits_path, gene_map)
-                if best_hits is None:
-                    write_log(log_path, "Error: could not summarize tblastn hits - no VERDICT")
-                    hits_path = None
-                else:
-                    verdict, reasons = is_nif_present_assembly(best_hits)
-        else:
-            if args.assembly:
-                write_log(log_path, f"Warning: assembly not found ({args.assembly}), falling back to reads")
-            reads_paths = [os.path.join(args.reads_dir, f"{args.sample}_R{i}.trim.fastq.gz") for i in (1, 2)]
-            reads_paths = [p for p in reads_paths if os.path.exists(p)]
-            write_log(log_path, f"Mode: reads ({reads_paths})")
-            hits_path = run_diamond_reads(ref_path, reads_paths, out_dir, args.threads, log_path) if reads_paths else None
-            if hits_path:
-                verdict, reasons = is_nif_present_reads(summarize_reads(hits_path, gene_map))
-            elif not reads_paths:
-                write_log(log_path, f"Error: no trimmed reads found in {args.reads_dir}")
+    for reason in reasons:
+        write_log(log_path, "  " + reason)
+    write_log(log_path, f"VERDICT: {verdict}")
+    write_log(log_path, f"Evidence: {hits_path}, {ref_path}, {log_path}")
+    return 0
 
-        if hits_path:
-            for reason in reasons:
-                write_log(log_path, "  " + reason)
-            write_log(log_path, f"VERDICT: {verdict}")
-            write_log(log_path, f"Evidence: {hits_path}, {ref_path}, {log_path}")
+
+if __name__ == "__main__":
+    sys.exit(main())
