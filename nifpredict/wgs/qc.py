@@ -87,6 +87,63 @@ def run_fastp(r1_path, r2_path, out_dir, sample_name="sample"):
     return {"r1": out_r1, "r2": out_r2, "html": report_html, "json": report_json}
 
 
+# FIX (W16): add evaluate_qc_report returning PASS/FAIL/ERROR dict to separate corrupt/missing report from biological quality failure
+def evaluate_qc_report(report_path, min_q30_rate=0.8, max_duplication_rate=0.2):
+    """Evaluates a fastp JSON report against quality thresholds with PASS/FAIL/ERROR status.
+
+    Args:
+        report_path: Path to fastp's report json (output of run_fastp).
+        min_q30_rate: Minimum acceptable Q30 rate after filtering (default: 0.8).
+        max_duplication_rate: Maximum acceptable duplication rate (default: 0.2).
+
+    Returns:
+        dict: {"status": "PASS"|"FAIL"|"ERROR", "q30": float|None, "dup": float|None, "reason": str}.
+    """
+    try:
+        with open(report_path) as f:
+            data = json.load(f)
+        q30_rate = data["summary"]["after_filtering"]["q30_rate"]
+        duplication_rate = data["duplication"]["rate"]
+    except (OSError, json.JSONDecodeError, KeyError) as e:
+        print(f"Error: could not read fastp report - {e}")
+        return {
+            "status": "ERROR",
+            "q30": None,
+            "dup": None,
+            "reason": f"could not read fastp report: {e}",
+        }
+
+    print(f"Q30 rate (after filtering) = {q30_rate} (threshold: >= {min_q30_rate})")
+    print(f"Duplication rate = {duplication_rate} (threshold: <= {max_duplication_rate})")
+
+    q30_ok = q30_rate >= min_q30_rate
+    duplication_ok = duplication_rate <= max_duplication_rate
+
+    if q30_ok and duplication_ok:
+        print("PASS: reads meet quality gate, safe to continue to assembly")
+        return {
+            "status": "PASS",
+            "q30": float(q30_rate),
+            "dup": float(duplication_rate),
+            "reason": "reads meet quality gate",
+        }
+
+    print("FAIL: reads did not meet quality gate")
+    reasons = []
+    if not q30_ok:
+        print(f"  - Q30 rate too low ({q30_rate} < {min_q30_rate})")
+        reasons.append(f"Q30 rate too low ({q30_rate} < {min_q30_rate})")
+    if not duplication_ok:
+        print(f"  - Duplication rate too high ({duplication_rate} > {max_duplication_rate})")
+        reasons.append(f"Duplication rate too high ({duplication_rate} > {max_duplication_rate})")
+    return {
+        "status": "FAIL",
+        "q30": float(q30_rate),
+        "dup": float(duplication_rate),
+        "reason": "; ".join(reasons),
+    }
+
+
 def check_qc_report(report_path, min_q30_rate=0.8, max_duplication_rate=0.2):
     """
     Checks a fastp JSON report against quality thresholds.
@@ -99,31 +156,13 @@ def check_qc_report(report_path, min_q30_rate=0.8, max_duplication_rate=0.2):
     Returns:
         True if the reads pass both checks, False otherwise.
     """
-    try:
-        with open(report_path) as f:
-            data = json.load(f)
-        q30_rate = data["summary"]["after_filtering"]["q30_rate"]
-        duplication_rate = data["duplication"]["rate"]
-    except (OSError, json.JSONDecodeError, KeyError) as e:
-        print(f"Error: could not read fastp report - {e}")
-        return False
-
-    print(f"Q30 rate (after filtering) = {q30_rate} (threshold: >= {min_q30_rate})")
-    print(f"Duplication rate = {duplication_rate} (threshold: <= {max_duplication_rate})")
-
-    q30_ok = q30_rate >= min_q30_rate
-    duplication_ok = duplication_rate <= max_duplication_rate
-
-    if q30_ok and duplication_ok:
-        print("PASS: reads meet quality gate, safe to continue to assembly")
-        return True
-
-    print("FAIL: reads did not meet quality gate")
-    if not q30_ok:
-        print(f"  - Q30 rate too low ({q30_rate} < {min_q30_rate})")
-    if not duplication_ok:
-        print(f"  - Duplication rate too high ({duplication_rate} > {max_duplication_rate})")
-    return False
+    # FIX (W16): delegate to evaluate_qc_report while preserving boolean return and printed output
+    res = evaluate_qc_report(
+        report_path,
+        min_q30_rate=min_q30_rate,
+        max_duplication_rate=max_duplication_rate,
+    )
+    return res["status"] == "PASS"
 
 
 def get_fasta_total_length(fasta_path):
@@ -202,6 +241,10 @@ def run_quast(assembly_path, out_dir, threads=10):
     except subprocess.CalledProcessError as e:
         print(f"Error: QUAST failed - {e.stderr}")
         return None
+    # FIX (W16): catch FileNotFoundError when quast.py is not installed or not in PATH
+    except FileNotFoundError as e:
+        print(f"Error: QUAST failed - {e}")
+        return None
     report_path = os.path.join(out_dir, "report.tsv")
     if not os.path.exists(report_path):
         print(f"Error: QUAST finished but no report.tsv found in {out_dir}")
@@ -223,15 +266,32 @@ def run_busco(assembly_path, out_dir, lineage="bacillales_odb10", threads=10):
     Returns:
         Path to the short_summary JSON file, or None if BUSCO failed.
     """
+    # FIX (W16): require local lineage dataset.cfg and pass --offline so BUSCO never attempts network calls
+    lineage_dir = paths.BUSCO_DIR / "lineages" / lineage
+    dataset_cfg = lineage_dir / "dataset.cfg"
+    if not dataset_cfg.exists():
+        print(
+            f"Error: BUSCO lineage {lineage} not found in {lineage_dir} - "
+            f"fetch with: python scripts/fetch_public_data.py --id BUSCO_BACILLALES"
+        )
+        return None
+
     # FIX (A): lineage datasets live in data/public/busco/, not in the current directory
+    # cmd = ["busco", "-i", assembly_path, "-o", "busco_result", "--out_path", out_dir,
+    #        "-l", lineage, "-m", "genome", "-c", str(threads), "-f",
+    #        "--download_path", str(paths.BUSCO_DIR)]
     cmd = ["busco", "-i", assembly_path, "-o", "busco_result", "--out_path", out_dir,
            "-l", lineage, "-m", "genome", "-c", str(threads), "-f",
-           "--download_path", str(paths.BUSCO_DIR)]
+           "--download_path", str(paths.BUSCO_DIR), "--offline"]
     print(f"Running BUSCO on {assembly_path} (lineage={lineage}) ...")
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as e:
         print(f"Error: BUSCO failed - {e.stderr}")
+        return None
+    # FIX (W16): catch FileNotFoundError when busco executable is not in PATH
+    except FileNotFoundError as e:
+        print(f"Error: BUSCO failed - {e}")
         return None
     matches = glob.glob(os.path.join(out_dir, "busco_result", "short_summary*.json"))
     if not matches:
@@ -240,6 +300,88 @@ def run_busco(assembly_path, out_dir, lineage="bacillales_odb10", threads=10):
     summary_path = matches[0]
     print(f"BUSCO summary: {summary_path}")
     return summary_path
+
+
+# FIX (W16): add evaluate_assembly_quality returning PASS/FAIL/ERROR dict to distinguish missing/corrupt reports from low N50/BUSCO
+def evaluate_assembly_quality(quast_report_path, busco_summary_path, min_n50=50000, min_busco_completeness=95.0):
+    """Evaluates QUAST N50 and BUSCO completeness against Gate 2 thresholds with PASS/FAIL/ERROR status.
+
+    Args:
+        quast_report_path: Path to QUAST's report.tsv.
+        busco_summary_path: Path to BUSCO's short_summary JSON file.
+        min_n50: Minimum acceptable N50 in bp (default: 50000).
+        min_busco_completeness: Minimum acceptable BUSCO completeness in % (default: 95.0).
+
+    Returns:
+        dict: {"status": "PASS"|"FAIL"|"ERROR", "n50": int|None, "busco_complete": float|None, "reason": str}.
+    """
+    n50 = None
+    try:
+        with open(quast_report_path) as f:
+            for line in f:
+                parts = line.strip().split("\t")
+                if len(parts) >= 2 and parts[0] == "N50":
+                    n50 = int(parts[1])
+                    break
+    except (OSError, ValueError) as e:
+        print(f"Error: could not read QUAST report - {e}")
+        return {
+            "status": "ERROR",
+            "n50": None,
+            "busco_complete": None,
+            "reason": f"could not read QUAST report: {e}",
+        }
+    if n50 is None:
+        print(f"Error: N50 not found in {quast_report_path}")
+        return {
+            "status": "ERROR",
+            "n50": None,
+            "busco_complete": None,
+            "reason": f"N50 not found in {quast_report_path}",
+        }
+
+    try:
+        with open(busco_summary_path) as f:
+            busco_data = json.load(f)
+        completeness = busco_data["results"]["Complete percentage"]
+    except (OSError, json.JSONDecodeError, KeyError) as e:
+        print(f"Error: could not read BUSCO completeness - {e}")
+        return {
+            "status": "ERROR",
+            "n50": n50,
+            "busco_complete": None,
+            "reason": f"could not read BUSCO completeness: {e}",
+        }
+
+    print(f"N50 = {n50} bp (threshold: >= {min_n50} bp)")
+    print(f"BUSCO completeness = {completeness}% (threshold: >= {min_busco_completeness}%)")
+
+    n50_ok = n50 >= min_n50
+    completeness_ok = completeness >= min_busco_completeness
+
+    if n50_ok and completeness_ok:
+        print("PASS: assembly meets go/no-go gate, safe to continue to annotation")
+        return {
+            "status": "PASS",
+            "n50": n50,
+            "busco_complete": float(completeness),
+            "reason": "assembly meets go/no-go gate",
+        }
+
+    print("FAIL: assembly did not meet go/no-go gate")
+    reasons = []
+    if not n50_ok:
+        print(f"  - N50 too low ({n50} < {min_n50})")
+        reasons.append(f"N50 too low ({n50} < {min_n50})")
+    if not completeness_ok:
+        print(f"  - BUSCO completeness too low ({completeness} < {min_busco_completeness})")
+        reasons.append(f"BUSCO completeness too low ({completeness} < {min_busco_completeness})")
+    return {
+        "status": "FAIL",
+        "n50": n50,
+        "busco_complete": float(completeness),
+        "reason": "; ".join(reasons),
+    }
 
 
 def check_assembly_quality(quast_report_path, busco_summary_path, min_n50=50000, min_busco_completeness=95.0):
@@ -256,45 +398,54 @@ def check_assembly_quality(quast_report_path, busco_summary_path, min_n50=50000,
     Returns:
         True if the assembly passes both checks, False otherwise.
     """
-    n50 = None
-    try:
-        with open(quast_report_path) as f:
-            for line in f:
-                parts = line.strip().split("\t")
-                if len(parts) >= 2 and parts[0] == "N50":
-                    n50 = int(parts[1])
-                    break
-    except OSError as e:
-        print(f"Error: could not read QUAST report - {e}")
-        return False
-    if n50 is None:
-        print(f"Error: N50 not found in {quast_report_path}")
-        return False
+    # FIX (W16): delegate to evaluate_assembly_quality while preserving boolean return and printed output
+    res = evaluate_assembly_quality(
+        quast_report_path,
+        busco_summary_path,
+        min_n50=min_n50,
+        min_busco_completeness=min_busco_completeness,
+    )
+    return res["status"] == "PASS"
 
-    try:
-        with open(busco_summary_path) as f:
-            busco_data = json.load(f)
-        completeness = busco_data["results"]["Complete percentage"]
-    except (OSError, json.JSONDecodeError, KeyError) as e:
-        print(f"Error: could not read BUSCO completeness - {e}")
-        return False
 
-    print(f"N50 = {n50} bp (threshold: >= {min_n50} bp)")
-    print(f"BUSCO completeness = {completeness}% (threshold: >= {min_busco_completeness}%)")
+# FIX (W16): add run_assembly_qc_status returning PASS/FAIL/ERROR dict when running QUAST + BUSCO from scratch
+def run_assembly_qc_status(assembly_path, out_dir, lineage="bacillales_odb10",
+                           min_n50=50000, min_busco_completeness=95.0, threads=10):
+    """Orchestrator: runs QUAST + BUSCO on a finished assembly and returns structured Gate 2 status.
 
-    n50_ok = n50 >= min_n50
-    completeness_ok = completeness >= min_busco_completeness
+    Args:
+        assembly_path: Path to the assembled genome (assembly.fasta).
+        out_dir: Directory where QUAST and BUSCO write outputs.
+        lineage: BUSCO lineage dataset name (default: bacillales_odb10).
+        min_n50: Minimum acceptable N50 in bp (default: 50000).
+        min_busco_completeness: Minimum acceptable BUSCO completeness in % (default: 95.0).
+        threads: Number of CPU threads to use (default: 10).
 
-    if n50_ok and completeness_ok:
-        print("PASS: assembly meets go/no-go gate, safe to continue to annotation")
-        return True
-
-    print("FAIL: assembly did not meet go/no-go gate")
-    if not n50_ok:
-        print(f"  - N50 too low ({n50} < {min_n50})")
-    if not completeness_ok:
-        print(f"  - BUSCO completeness too low ({completeness} < {min_busco_completeness})")
-    return False
+    Returns:
+        dict: {"status": "PASS"|"FAIL"|"ERROR", "n50": int|None, "busco_complete": float|None, "reason": str}.
+    """
+    quast_report_path = run_quast(assembly_path, out_dir, threads=threads)
+    if quast_report_path is None:
+        return {
+            "status": "ERROR",
+            "n50": None,
+            "busco_complete": None,
+            "reason": "QUAST failed to produce report.tsv",
+        }
+    busco_summary_path = run_busco(assembly_path, out_dir, lineage=lineage, threads=threads)
+    if busco_summary_path is None:
+        return {
+            "status": "ERROR",
+            "n50": None,
+            "busco_complete": None,
+            "reason": f"BUSCO failed for lineage {lineage}",
+        }
+    return evaluate_assembly_quality(
+        quast_report_path,
+        busco_summary_path,
+        min_n50=min_n50,
+        min_busco_completeness=min_busco_completeness,
+    )
 
 
 def run_assembly_qc_gate(assembly_path, out_dir, lineage="bacillales_odb10",
@@ -306,14 +457,16 @@ def run_assembly_qc_gate(assembly_path, out_dir, lineage="bacillales_odb10",
     Returns:
         True if the assembly passes, False if it fails or any step errors out.
     """
-    quast_report_path = run_quast(assembly_path, out_dir, threads=threads)
-    if quast_report_path is None:
-        return False
-    busco_summary_path = run_busco(assembly_path, out_dir, lineage=lineage, threads=threads)
-    if busco_summary_path is None:
-        return False
-    return check_assembly_quality(quast_report_path, busco_summary_path,
-                                   min_n50=min_n50, min_busco_completeness=min_busco_completeness)
+    # FIX (W16): delegate to run_assembly_qc_status while preserving boolean return
+    res = run_assembly_qc_status(
+        assembly_path,
+        out_dir,
+        lineage=lineage,
+        min_n50=min_n50,
+        min_busco_completeness=min_busco_completeness,
+        threads=threads,
+    )
+    return res["status"] == "PASS"
 
 
 if __name__ == "__main__":

@@ -14,10 +14,13 @@ from nifpredict.wgs.loader import find_raw_reads
 from nifpredict.wgs.qc import (
     check_assembly_quality,
     check_qc_report,
+    evaluate_assembly_quality,
+    evaluate_qc_report,
     get_fasta_total_length,
     get_read_coverage,
     peek_read_length,
     run_assembly_qc_gate,
+    run_assembly_qc_status,
     run_fastp,
 )
 
@@ -166,6 +169,32 @@ def run_sample_qc(r1_path, r2_path, qc_dir, sample_name):
     return fastp_res["r1"], fastp_res["r2"], fastp_res["json"]
 
 
+# FIX (W16): add sample_qc_gate_status using evaluate_qc_report to distinguish Gate 1 FAIL from ERROR
+def sample_qc_gate_status(fastp_json_path, sample_name):
+    """Evaluate Gate 1 quality metrics from fastp report with PASS/FAIL/ERROR status.
+
+    Args:
+        fastp_json_path: Path to fastp json report.
+        sample_name: Name of sample.
+
+    Returns:
+        dict: {"status": "PASS"|"FAIL"|"ERROR", "q30": float|None, "dup": float|None, "reason": str}.
+    """
+    if not os.path.exists(fastp_json_path):
+        print(f"Error: {fastp_json_path} not found for Gate 1 QC check.")
+        return {
+            "status": "ERROR",
+            "q30": None,
+            "dup": None,
+            "reason": f"{fastp_json_path} not found",
+        }
+
+    res = evaluate_qc_report(fastp_json_path)
+    if res["status"] != "PASS":
+        print(f"Error: Gate 1 {res['status']} for {sample_name} based on {fastp_json_path}")
+    return res
+
+
 def is_sample_qc_gate_passed(fastp_json_path, sample_name):
     """Evaluate Gate 1 quality metrics from fastp report.
 
@@ -233,6 +262,43 @@ def run_sample_assembly(platform, assembly_dir, trim_r1_path, trim_r2_path, thre
         print(f"Error: Assembly failed for {assembly_dir}")
         return None
     return assembled_path
+
+
+# FIX (W16): add sample_gate2_status using evaluate_assembly_quality / run_assembly_qc_status to separate Gate 2 FAIL from ERROR
+def sample_gate2_status(assembly_fasta_path, assembly_qc_dir, threads):
+    """Run Gate 2 assembly evaluation (QUAST + BUSCO) or evaluate existing reports with PASS/FAIL/ERROR status.
+
+    Args:
+        assembly_fasta_path: Path to assembly FASTA.
+        assembly_qc_dir: Output directory for assembly QC.
+        threads: Number of threads.
+
+    Returns:
+        dict: {"status": "PASS"|"FAIL"|"ERROR", "n50": int|None, "busco_complete": float|None, "reason": str}.
+    """
+    quast_tsv_path = os.path.join(assembly_qc_dir, "report.tsv")
+    busco_summaries = glob.glob(os.path.join(assembly_qc_dir, "busco_result", "short_summary*.json"))
+
+    # 1. Reuse existing reports if available
+    if os.path.exists(quast_tsv_path) and busco_summaries:
+        print(f"Warning: {quast_tsv_path} exists, skipping QUAST and BUSCO run.")
+        return evaluate_assembly_quality(
+            quast_tsv_path,
+            busco_summaries[0],
+            min_n50=50000,               # Floor threshold against fragmented assembly
+            min_busco_completeness=95.0, # Gate 2 completeness threshold
+        )
+
+    # 2. Run Gate 2 evaluation from scratch
+    os.makedirs(assembly_qc_dir, exist_ok=True)
+    return run_assembly_qc_status(
+        assembly_fasta_path,
+        assembly_qc_dir,
+        lineage="bacillales_odb10",      # Default Bacillales lineage
+        min_n50=50000,                   # Floor threshold
+        min_busco_completeness=95.0,     # Gate 2 threshold
+        threads=threads,
+    )
 
 
 def is_sample_gate2_passed(assembly_fasta_path, assembly_qc_dir, threads):
@@ -415,7 +481,16 @@ def check_sample_identity(assembly_fasta_path, ref_genome_path, identity_tsv_pat
     return {"status": "PASS", "ani": ani, "af_ref": af_ref, "af_query": af_query}
 
 
-if __name__ == "__main__":
+# FIX (W16): wrap CLI execution in main(argv=None) -> int with exit codes 0 (DONE), 1 (FAIL), 3 (ERROR) and final STATUS line
+def main(argv=None) -> int:
+    """Run the WGS sample pipeline from CLI arguments and return exit code (0=DONE, 1=FAIL, 3=ERROR).
+
+    Args:
+        argv: Optional list of CLI argument strings (default: None, uses sys.argv[1:]).
+
+    Returns:
+        int: Exit status code (0 for success/dry-run, 1 for gate/identity FAIL, 3 for tool/input ERROR).
+    """
     default_threads = min(10, os.cpu_count() or 1) # Cap at 10 threads per machine policy
 
     parser = argparse.ArgumentParser(
@@ -433,19 +508,33 @@ if __name__ == "__main__":
                         help=f"Reference genome FNA for identity check (default: FZB42, {paths.DEFAULT_IDENTITY_ACCESSION} in data/public/genomes)")
     parser.add_argument("-n", "--dry_run", action="store_true", help="Print steps and paths without running tools")
 
-    args = parser.parse_args()
+    # FIX (W16): parse argv; a missing default reference is an ERROR before any work starts (was a traceback)
+    # args = parser.parse_args()
+    # if args.ref_genome is None:
+    #     args.ref_genome = str(paths.genome_fna(paths.DEFAULT_IDENTITY_ACCESSION))
+    args = parser.parse_args(argv)
     if args.ref_genome is None:
-        args.ref_genome = str(paths.genome_fna(paths.DEFAULT_IDENTITY_ACCESSION))
+        try:
+            args.ref_genome = str(paths.genome_fna(paths.DEFAULT_IDENTITY_ACCESSION))
+        except FileNotFoundError as e:
+            print(f"STATUS: ERROR - identity - default reference not available: {e}")
+            return 3
 
     # 1. Find raw reads
     r1_path, r2_path = get_sample_raw_reads(args.data_dir, args.sample)
     if not r1_path or not r2_path:
-        sys.exit(1)
+        # FIX (W16): return 3 with STATUS: ERROR - reads instead of sys.exit(1)
+        # sys.exit(1)
+        print(f"STATUS: ERROR - reads - raw paired-end reads not found for {args.sample} in {args.data_dir}")
+        return 3
 
     # 2. Determine platform
     platform = determine_platform(args.platform, r1_path)
     if platform is None:
-        sys.exit(1)
+        # FIX (W16): return 3 with STATUS: ERROR - reads instead of sys.exit(1)
+        # sys.exit(1)
+        print(f"STATUS: ERROR - reads - could not determine valid short-read platform from {r1_path}")
+        return 3
 
     # 3. Plan output paths
     sample_root = os.path.join(args.out_dir, args.sample)
@@ -475,26 +564,50 @@ if __name__ == "__main__":
         print(f"[DRY-RUN] Step 5 (Contig stats): {contig_stats_tsv_path}")
         print(f"[DRY-RUN] Step 5b (Coverage): {fastp_json_path} vs {assembly_fasta_path} and {args.ref_genome}")
         print(f"[DRY-RUN] Step 6 (Identity check): {identity_tsv_path} vs {args.ref_genome}")
-        sys.exit(0)
+        # FIX (W16): return 0 instead of sys.exit(0)
+        # sys.exit(0)
+        return 0
 
     # 5. Step 1: QC fastp
     trim_r1_path, trim_r2_path, fastp_json_path = run_sample_qc(r1_path, r2_path, qc_dir, args.sample)
     if not trim_r1_path or not trim_r2_path or not fastp_json_path:
-        sys.exit(1)
+        # FIX (W16): return 3 with STATUS: ERROR - fastp instead of sys.exit(1)
+        # sys.exit(1)
+        print(f"STATUS: ERROR - fastp - fastp failed for {args.sample}")
+        return 3
 
     # 6. Step 2: Gate 1 check
-    if not is_sample_qc_gate_passed(fastp_json_path, args.sample):
-        sys.exit(1)
+    # FIX (W16): use sample_qc_gate_status to separate Gate 1 FAIL (exit 1) from ERROR (exit 3)
+    # if not is_sample_qc_gate_passed(fastp_json_path, args.sample):
+    #     sys.exit(1)
+    gate1_res = sample_qc_gate_status(fastp_json_path, args.sample)
+    if gate1_res["status"] == "FAIL":
+        print(f"STATUS: FAIL - gate1 - {gate1_res['reason']}")
+        return 1
+    if gate1_res["status"] != "PASS":
+        print(f"STATUS: ERROR - gate1 - {gate1_res['reason']}")
+        return 3
 
     # 7. Step 3: De novo assembly
     assembly_fasta_path = run_sample_assembly(platform, assembly_dir, trim_r1_path, trim_r2_path, args.threads)
     if not assembly_fasta_path:
-        sys.exit(1)
+        # FIX (W16): return 3 with STATUS: ERROR - assembly instead of sys.exit(1)
+        # sys.exit(1)
+        print(f"STATUS: ERROR - assembly - de novo assembly failed for {args.sample}")
+        return 3
 
     # 8. Step 4: Gate 2 assembly QC
-    if not is_sample_gate2_passed(assembly_fasta_path, assembly_qc_dir, args.threads):
-        print(f"Error: Gate 2 FAIL for {args.sample}: assembly quality below thresholds.")
-        sys.exit(1)
+    # FIX (W16): use sample_gate2_status and replace legacy Gate 2 FAIL error line with STATUS: FAIL/ERROR - gate2
+    # if not is_sample_gate2_passed(assembly_fasta_path, assembly_qc_dir, args.threads):
+    #     print(f"Error: Gate 2 FAIL for {args.sample}: assembly quality below thresholds.")
+    #     sys.exit(1)
+    gate2_res = sample_gate2_status(assembly_fasta_path, assembly_qc_dir, args.threads)
+    if gate2_res["status"] == "FAIL":
+        print(f"STATUS: FAIL - gate2 - {gate2_res['reason']}")
+        return 1
+    if gate2_res["status"] != "PASS":
+        print(f"STATUS: ERROR - gate2 - {gate2_res['reason']}")
+        return 3
 
     # 9. Step 5: Contig stats
     run_sample_contig_stats(assembly_fasta_path, contig_stats_tsv_path)
@@ -504,8 +617,26 @@ if __name__ == "__main__":
 
     # 10. Step 6: Identity check
     identity_res = check_sample_identity(assembly_fasta_path, args.ref_genome, identity_tsv_path, args.threads)
+    # FIX (W16): map identity FAIL to exit 1 and ERROR to exit 3 with final STATUS line
+    # if identity_res["status"] != "PASS":
+    #     sys.exit(1)
+    if identity_res["status"] == "FAIL":
+        ani_val = identity_res.get("ani")
+        reason = (
+            f"no ANI with {args.ref_genome}"
+            if ani_val is None
+            else f"ANI={ani_val:.2f}% < 95.0% with {args.ref_genome}"
+        )
+        print(f"STATUS: FAIL - identity - {reason}")
+        return 1
     if identity_res["status"] != "PASS":
-        sys.exit(1)
+        print(f"STATUS: ERROR - identity - identity check could not be completed against {args.ref_genome}")
+        return 3
 
     # FIX: print completion line when all gates and identity check pass
     print(f"DONE: {args.sample} passed gate 1, gate 2 and identity; stopped before annotation")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
