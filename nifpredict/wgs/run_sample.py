@@ -1,9 +1,13 @@
 # nifpredict/wgs/run_sample.py — run from the repo root: python -m nifpredict.wgs.run_sample -s SAMPLE -d READS_DIR
 
 import argparse
+import datetime
 import glob
 import os
 import re
+import shlex
+import signal
+import socket
 import subprocess
 import sys
 
@@ -23,6 +27,242 @@ from nifpredict.wgs.qc import (
     run_assembly_qc_status,
     run_fastp,
 )
+
+
+# FIX (W17): read kernel boot_id into a separate helper so unit tests can monkeypatch reboot detection
+def _read_boot_id() -> str:
+    """Read kernel boot ID from /proc/sys/kernel/random/boot_id.
+
+    Returns:
+        str: Stripped boot ID string, or "" if unavailable or unreadable.
+    """
+    try:
+        with open("/proc/sys/kernel/random/boot_id", "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+# FIX (W17): probe whether a positive PID is alive via signal 0 without signalling process groups (pid <= 0)
+def _pid_alive(pid: int) -> bool:
+    """Check whether a process with the given PID is currently alive on this host.
+
+    Args:
+        pid: Process ID to probe (must be > 0; pid <= 0 returns False immediately).
+
+    Returns:
+        bool: True if the process exists (including PermissionError), False otherwise.
+    """
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
+# FIX (W17): format lock file payload consistently for fresh creation and stale lock takeover
+def _format_lock_payload(argv) -> str:
+    """Format key=value lines for the per-sample .run.lock file.
+
+    Args:
+        argv: CLI argument list, or None to fall back to sys.argv[1:].
+
+    Returns:
+        str: Multi-line key=value lock file content ending with a newline.
+    """
+    arg_list = sys.argv[1:] if argv is None else [str(a) for a in argv]
+    lines = [
+        f"pid={os.getpid()}",
+        f"hostname={socket.gethostname()}",
+        f"boot_id={_read_boot_id()}",
+        f"started={datetime.datetime.now().isoformat(timespec='seconds')}",
+        f"argv={shlex.join(arg_list)}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+# FIX (W17): parse key=value lines from an existing .run.lock file
+def _parse_lock_text(text: str) -> dict[str, str]:
+    """Parse key=value pairs from lock file text.
+
+    Args:
+        text: Raw content of a .run.lock file.
+
+    Returns:
+        dict: Mapping of key to value for all lines containing '='.
+    """
+    data: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if "=" not in line:
+            continue
+        key, val = line.split("=", 1)
+        key = key.strip()
+        if key:
+            data[key] = val.strip()
+    return data
+
+
+# FIX (W17): guard <sample_root> against concurrent runs and recover from stale locks left by crashes/SIGKILL
+def acquire_run_lock(sample_root, argv) -> dict:
+    """Acquire an exclusive per-sample run lock at <sample_root>/.run.lock or take over a stale lock.
+
+    Args:
+        sample_root: Sample output directory path (str or PathLike).
+        argv: CLI argument list passed to main(), or None to use sys.argv[1:].
+
+    Returns:
+        dict: {"status": "OK"|"ERROR", "path": str, "reason": str}.
+    """
+    sample_root_str = str(sample_root)
+    lock_path = os.path.join(sample_root_str, ".run.lock")
+
+    try:
+        os.makedirs(sample_root_str, exist_ok=True)
+    except OSError as e:
+        reason = f"cannot create sample directory {sample_root_str}: {e}"
+        print(f"STATUS: ERROR - lock - {reason}")
+        return {"status": "ERROR", "path": lock_path, "reason": reason}
+
+    try:
+        payload = _format_lock_payload(argv)
+    except Exception as e:
+        reason = f"cannot format lock payload: {e}"
+        print(f"STATUS: ERROR - lock - {reason}")
+        return {"status": "ERROR", "path": lock_path, "reason": reason}
+
+    # 1. Fast path: atomic exclusive creation
+    try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        try:
+            os.write(fd, payload.encode("utf-8"))
+        finally:
+            os.close(fd)
+        return {"status": "OK", "path": lock_path, "reason": "acquired"}
+    except FileExistsError:
+        pass
+    except OSError as e:
+        reason = f"cannot create lock {lock_path}: {e}"
+        print(f"STATUS: ERROR - lock - {reason}")
+        return {"status": "ERROR", "path": lock_path, "reason": reason}
+
+    # 2. Lock already exists: inspect and validate existing lock file
+    try:
+        with open(lock_path, "r", encoding="utf-8") as f:
+            raw_content = f.read()
+    except OSError as e:
+        reason = f"cannot read {lock_path}: {e}"
+        print(f"STATUS: ERROR - lock - {reason}")
+        return {"status": "ERROR", "path": lock_path, "reason": reason}
+
+    parsed = _parse_lock_text(raw_content)
+    if "pid" not in parsed:
+        reason = f"cannot read {lock_path}: missing pid"
+        print(f"STATUS: ERROR - lock - {reason}")
+        return {"status": "ERROR", "path": lock_path, "reason": reason}
+
+    raw_pid = parsed["pid"]
+    try:
+        old_pid = int(raw_pid)
+    except ValueError:
+        reason = f"cannot read {lock_path}: invalid pid {raw_pid!r}"
+        print(f"STATUS: ERROR - lock - {reason}")
+        return {"status": "ERROR", "path": lock_path, "reason": reason}
+
+    if old_pid <= 0:
+        reason = f"cannot read {lock_path}: non-positive pid {old_pid}"
+        print(f"STATUS: ERROR - lock - {reason}")
+        return {"status": "ERROR", "path": lock_path, "reason": reason}
+
+    old_host = parsed.get("hostname", "")
+    cur_host = socket.gethostname()
+    old_boot = parsed.get("boot_id", "")
+    cur_boot = _read_boot_id()
+    started = parsed.get("started") or "unknown"
+
+    stale_reason = None
+    if old_host != cur_host:
+        stale_reason = f"hostname changed ({old_host} -> {cur_host})"
+    elif old_boot != cur_boot:
+        stale_reason = "boot_id changed"
+    elif not _pid_alive(old_pid):
+        stale_reason = f"pid {old_pid} not running"
+
+    # 3. Active lock held by a live process on the same host and boot session
+    if stale_reason is None:
+        sample_name = os.path.basename(os.path.normpath(sample_root_str))
+        reason = f"{sample_name} is being written by pid {old_pid} since {started}"
+        print(f"STATUS: ERROR - lock - {reason}")
+        return {"status": "ERROR", "path": lock_path, "reason": reason}
+
+    # 4. Stale lock: warn and atomically replace via a temporary file in the same directory
+    print(f"Warning: stale lock {lock_path} ({stale_reason}), taking over")
+    tmp_path = os.path.join(sample_root_str, f".run.lock.tmp.{os.getpid()}")
+    try:
+        fd = os.open(tmp_path, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o644)
+        try:
+            os.write(fd, payload.encode("utf-8"))
+        finally:
+            os.close(fd)
+        os.replace(tmp_path, lock_path)
+    except OSError as e:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+        reason = f"cannot replace stale lock {lock_path}: {e}"
+        print(f"STATUS: ERROR - lock - {reason}")
+        return {"status": "ERROR", "path": lock_path, "reason": reason}
+
+    return {"status": "OK", "path": lock_path, "reason": f"took over stale lock ({stale_reason})"}
+
+
+# FIX (W17): release .run.lock only if still owned by this process on this host
+def release_run_lock(lock_path) -> bool:
+    """Remove the run lock file if and only if it belongs to the current PID and hostname.
+
+    Args:
+        lock_path: Path to the .run.lock file (str or PathLike).
+
+    Returns:
+        bool: True if the lock was owned by this process and removed, False otherwise.
+    """
+    try:
+        with open(lock_path, "r", encoding="utf-8") as f:
+            parsed = _parse_lock_text(f.read())
+        lock_pid = int(parsed.get("pid", ""))
+        lock_host = parsed.get("hostname", "")
+        if lock_pid != os.getpid() or lock_host != socket.gethostname():
+            return False
+        os.remove(lock_path)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+# FIX (W17): convert SIGTERM into SystemExit(143) so try/finally in main() cleans up .run.lock
+def _install_sigterm_handler():
+    """Install a SIGTERM handler that raises SystemExit(143) so finally blocks run on termination.
+
+    Returns:
+        Previous SIGTERM handler if successfully installed in the main thread, or None otherwise.
+    """
+    def _handle_sigterm(signum, frame):
+        raise SystemExit(143)
+
+    try:
+        return signal.signal(signal.SIGTERM, _handle_sigterm)
+    except (ValueError, OSError):
+        return None
 
 
 def get_mate_number(file_path, sample_name):
@@ -568,74 +808,88 @@ def main(argv=None) -> int:
         # sys.exit(0)
         return 0
 
-    # 5. Step 1: QC fastp
-    trim_r1_path, trim_r2_path, fastp_json_path = run_sample_qc(r1_path, r2_path, qc_dir, args.sample)
-    if not trim_r1_path or not trim_r2_path or not fastp_json_path:
-        # FIX (W16): return 3 with STATUS: ERROR - fastp instead of sys.exit(1)
-        # sys.exit(1)
-        print(f"STATUS: ERROR - fastp - fastp failed for {args.sample}")
+    # FIX (W17): acquire per-sample lock before running any pipeline step; release in finally block
+    lock = acquire_run_lock(sample_root, argv)
+    if lock["status"] == "ERROR":
         return 3
 
-    # 6. Step 2: Gate 1 check
-    # FIX (W16): use sample_qc_gate_status to separate Gate 1 FAIL (exit 1) from ERROR (exit 3)
-    # if not is_sample_qc_gate_passed(fastp_json_path, args.sample):
-    #     sys.exit(1)
-    gate1_res = sample_qc_gate_status(fastp_json_path, args.sample)
-    if gate1_res["status"] == "FAIL":
-        print(f"STATUS: FAIL - gate1 - {gate1_res['reason']}")
-        return 1
-    if gate1_res["status"] != "PASS":
-        print(f"STATUS: ERROR - gate1 - {gate1_res['reason']}")
-        return 3
+    prev = _install_sigterm_handler()
+    try:
+        # 5. Step 1: QC fastp
+        trim_r1_path, trim_r2_path, fastp_json_path = run_sample_qc(r1_path, r2_path, qc_dir, args.sample)
+        if not trim_r1_path or not trim_r2_path or not fastp_json_path:
+            # FIX (W16): return 3 with STATUS: ERROR - fastp instead of sys.exit(1)
+            # sys.exit(1)
+            print(f"STATUS: ERROR - fastp - fastp failed for {args.sample}")
+            return 3
 
-    # 7. Step 3: De novo assembly
-    assembly_fasta_path = run_sample_assembly(platform, assembly_dir, trim_r1_path, trim_r2_path, args.threads)
-    if not assembly_fasta_path:
-        # FIX (W16): return 3 with STATUS: ERROR - assembly instead of sys.exit(1)
-        # sys.exit(1)
-        print(f"STATUS: ERROR - assembly - de novo assembly failed for {args.sample}")
-        return 3
+        # 6. Step 2: Gate 1 check
+        # FIX (W16): use sample_qc_gate_status to separate Gate 1 FAIL (exit 1) from ERROR (exit 3)
+        # if not is_sample_qc_gate_passed(fastp_json_path, args.sample):
+        #     sys.exit(1)
+        gate1_res = sample_qc_gate_status(fastp_json_path, args.sample)
+        if gate1_res["status"] == "FAIL":
+            print(f"STATUS: FAIL - gate1 - {gate1_res['reason']}")
+            return 1
+        if gate1_res["status"] != "PASS":
+            print(f"STATUS: ERROR - gate1 - {gate1_res['reason']}")
+            return 3
 
-    # 8. Step 4: Gate 2 assembly QC
-    # FIX (W16): use sample_gate2_status and replace legacy Gate 2 FAIL error line with STATUS: FAIL/ERROR - gate2
-    # if not is_sample_gate2_passed(assembly_fasta_path, assembly_qc_dir, args.threads):
-    #     print(f"Error: Gate 2 FAIL for {args.sample}: assembly quality below thresholds.")
-    #     sys.exit(1)
-    gate2_res = sample_gate2_status(assembly_fasta_path, assembly_qc_dir, args.threads)
-    if gate2_res["status"] == "FAIL":
-        print(f"STATUS: FAIL - gate2 - {gate2_res['reason']}")
-        return 1
-    if gate2_res["status"] != "PASS":
-        print(f"STATUS: ERROR - gate2 - {gate2_res['reason']}")
-        return 3
+        # 7. Step 3: De novo assembly
+        assembly_fasta_path = run_sample_assembly(platform, assembly_dir, trim_r1_path, trim_r2_path, args.threads)
+        if not assembly_fasta_path:
+            # FIX (W16): return 3 with STATUS: ERROR - assembly instead of sys.exit(1)
+            # sys.exit(1)
+            print(f"STATUS: ERROR - assembly - de novo assembly failed for {args.sample}")
+            return 3
 
-    # 9. Step 5: Contig stats
-    run_sample_contig_stats(assembly_fasta_path, contig_stats_tsv_path)
+        # 8. Step 4: Gate 2 assembly QC
+        # FIX (W16): use sample_gate2_status and replace legacy Gate 2 FAIL error line with STATUS: FAIL/ERROR - gate2
+        # if not is_sample_gate2_passed(assembly_fasta_path, assembly_qc_dir, args.threads):
+        #     print(f"Error: Gate 2 FAIL for {args.sample}: assembly quality below thresholds.")
+        #     sys.exit(1)
+        gate2_res = sample_gate2_status(assembly_fasta_path, assembly_qc_dir, args.threads)
+        if gate2_res["status"] == "FAIL":
+            print(f"STATUS: FAIL - gate2 - {gate2_res['reason']}")
+            return 1
+        if gate2_res["status"] != "PASS":
+            print(f"STATUS: ERROR - gate2 - {gate2_res['reason']}")
+            return 3
 
-    # 9b. Step 5b: Print read coverage (print only, not a gate)
-    print_sample_coverage(fastp_json_path, assembly_fasta_path, args.ref_genome)
+        # 9. Step 5: Contig stats
+        run_sample_contig_stats(assembly_fasta_path, contig_stats_tsv_path)
 
-    # 10. Step 6: Identity check
-    identity_res = check_sample_identity(assembly_fasta_path, args.ref_genome, identity_tsv_path, args.threads)
-    # FIX (W16): map identity FAIL to exit 1 and ERROR to exit 3 with final STATUS line
-    # if identity_res["status"] != "PASS":
-    #     sys.exit(1)
-    if identity_res["status"] == "FAIL":
-        ani_val = identity_res.get("ani")
-        reason = (
-            f"no ANI with {args.ref_genome}"
-            if ani_val is None
-            else f"ANI={ani_val:.2f}% < 95.0% with {args.ref_genome}"
-        )
-        print(f"STATUS: FAIL - identity - {reason}")
-        return 1
-    if identity_res["status"] != "PASS":
-        print(f"STATUS: ERROR - identity - identity check could not be completed against {args.ref_genome}")
-        return 3
+        # 9b. Step 5b: Print read coverage (print only, not a gate)
+        print_sample_coverage(fastp_json_path, assembly_fasta_path, args.ref_genome)
 
-    # FIX: print completion line when all gates and identity check pass
-    print(f"DONE: {args.sample} passed gate 1, gate 2 and identity; stopped before annotation")
-    return 0
+        # 10. Step 6: Identity check
+        identity_res = check_sample_identity(assembly_fasta_path, args.ref_genome, identity_tsv_path, args.threads)
+        # FIX (W16): map identity FAIL to exit 1 and ERROR to exit 3 with final STATUS line
+        # if identity_res["status"] != "PASS":
+        #     sys.exit(1)
+        if identity_res["status"] == "FAIL":
+            ani_val = identity_res.get("ani")
+            reason = (
+                f"no ANI with {args.ref_genome}"
+                if ani_val is None
+                else f"ANI={ani_val:.2f}% < 95.0% with {args.ref_genome}"
+            )
+            print(f"STATUS: FAIL - identity - {reason}")
+            return 1
+        if identity_res["status"] != "PASS":
+            print(f"STATUS: ERROR - identity - identity check could not be completed against {args.ref_genome}")
+            return 3
+
+        # FIX: print completion line when all gates and identity check pass
+        print(f"DONE: {args.sample} passed gate 1, gate 2 and identity; stopped before annotation")
+        return 0
+    finally:
+        release_run_lock(lock["path"])
+        if prev is not None:
+            try:
+                signal.signal(signal.SIGTERM, prev)
+            except ValueError:
+                pass
 
 
 if __name__ == "__main__":
