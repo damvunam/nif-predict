@@ -1,0 +1,42 @@
+# Environment for the WGS side of NifPredict (external tools + Python package).
+#
+# Recreate it with:
+#   micromamba create -y -n nifwgs -f environment.yml     # run from the repo root
+#   micromamba activate nifwgs
+#
+# Versions below are the ones verified in MU3 S0 (2026-10-29, env nifwgs):
+# Python 3.12.15, pytest 9.2.0, fastp 1.4.0, Unicycler 0.5.1, SPAdes 4.3.0,
+# QUAST 5.3.0, BUSCO 6.1.0, skani 0.4.0, BLAST 2.16.0, diamond 2.2.8,
+# seqtk 1.5, seqkit 2.14.0, ncbi-datasets-cli 18.40.0.
+# This file is a reproducible recipe, not a lock: the exact conda lock from
+# S0 lives in results/mu3/nifwgs.lock.yml (gitignored). Pinning here is by
+# version only (no build string), so the solver may pick a newer build.
+#
+# Note: `pip install -e .` downgrades conda numpy 2.3.5 -> 1.26.4 and
+# pandas 3.1.0 -> 3.0.6 to satisfy pyproject (numpy>=1.24.0,<2.0.0).
+# That is a pip-side effect in the env, not a change to this file.
+# pyhmmer / tqdm are NOT listed here: they come from pyproject.toml via the
+# `pip: -e .[dev]` entry below. [dev] is required: pyproject.toml sets
+# pytest addopts `--cov=nifpredict`, so a bare `pytest` fails with
+# "unrecognized arguments: --cov" unless pytest-cov (in [dev]) is installed.
+name: nifwgs
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.12
+  - pip
+  - pytest=9.2.0
+  - fastp=1.4.0
+  - unicycler=0.5.1
+  - spades=4.3.0
+  - quast=5.3.0
+  - busco=6.1.0
+  - skani=0.4.0
+  - blast=2.16.0
+  - diamond=2.2.8
+  - seqtk=1.5
+  - seqkit=2.14.0
+  - ncbi-datasets-cli=18.40.0
+  - pip:
+      - -e .[dev]

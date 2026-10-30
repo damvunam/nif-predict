@@ -24,9 +24,13 @@ outside `nifpredict/common/paths.py`.
 
 ## Setup
 
-- Python ≥ 3.10 venv for code and tests: `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
-- Conda env with the external tools (here `prokka_test`): fastp, unicycler, quast, busco, skani, BLAST+
-  (makeblastdb, tblastn), DIAMOND, NCBI `datasets`; prokka/bakta for annotation.
+- Python ≥ 3.10, ≤ 3.12 venv for code and tests (`numpy<2` has no wheels for 3.13):
+  `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
+- WGS tools + package in one conda env (fastp, unicycler, SPAdes, quast, busco, skani, BLAST+, DIAMOND,
+  seqtk, seqkit, NCBI `datasets`, pinned versions): from the repo root,
+  `micromamba create -y -n nifwgs -f environment.yml && micromamba activate nifwgs`.
+  The solve itself is not covered by the test suite (see `tests/unit/test_mu6_env_files.py` for the static checks).
+- prokka/bakta for annotation are not in `environment.yml`; the maintainer's own env is `prokka_test`.
 
 ## Public data
 
