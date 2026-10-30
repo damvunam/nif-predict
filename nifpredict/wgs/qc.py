@@ -280,9 +280,12 @@ def run_busco(assembly_path, out_dir, lineage="bacillales_odb10", threads=10):
     # cmd = ["busco", "-i", assembly_path, "-o", "busco_result", "--out_path", out_dir,
     #        "-l", lineage, "-m", "genome", "-c", str(threads), "-f",
     #        "--download_path", str(paths.BUSCO_DIR)]
+    # FIX (C): opt out of BUSCO anonymous run-stats upload. --offline alone
+    # does not stop it: the S0 clean XS run's busco.log still shows a POST to
+    # busco-data.ezlab.org/uploaddb even with --offline.
     cmd = ["busco", "-i", assembly_path, "-o", "busco_result", "--out_path", out_dir,
            "-l", lineage, "-m", "genome", "-c", str(threads), "-f",
-           "--download_path", str(paths.BUSCO_DIR), "--offline"]
+           "--download_path", str(paths.BUSCO_DIR), "--offline", "--opt-out-run-stats"]
     print(f"Running BUSCO on {assembly_path} (lineage={lineage}) ...")
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
