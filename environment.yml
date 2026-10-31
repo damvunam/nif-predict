@@ -9,7 +9,7 @@
 # QUAST 5.3.0, BUSCO 6.1.0, skani 0.4.0, BLAST 2.16.0, diamond 2.2.8,
 # seqtk 1.5, seqkit 2.14.0, ncbi-datasets-cli 18.40.0.
 # This file is a reproducible recipe, not a lock: the exact conda lock from
-# S0 lives in results/mu3/nifwgs.lock.yml (gitignored). Pinning here is by
+# S0 lives in notes/muse/mu3_S0/nifwgs.lock.yml (gitignored). Pinning here is by
 # version only (no build string), so the solver may pick a newer build.
 #
 # Note: `pip install -e .` downgrades conda numpy 2.3.5 -> 1.26.4 and

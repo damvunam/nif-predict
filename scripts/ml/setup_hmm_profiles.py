@@ -85,7 +85,9 @@ HMM_REGISTRY: List[HMMProfileSpec] = [
         category="general_pfam",
         is_core=False,
         cutoff_flag="-cut_ga",
-        download_url="https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-A.hmm.gz",
+        # r1031: ghim một bản phát hành Pfam (thư mục bản mới nhất đổi theo thời gian, không tái lập được);
+        # cùng phiên bản với dòng PFAM_A trong data/public/MANIFEST.tsv
+        download_url="https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam38.2/Pfam-A.hmm.gz",
         expected_sha256=None,
     ),
 ]

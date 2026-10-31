@@ -24,9 +24,8 @@ htmlcov/
 # Local notes (never committed)
 .claude/
 review/
-docs/
 GEMINI.md
-plan.md
+/notes/
 *.md
 !/README.md
 

@@ -29,7 +29,7 @@ outside `nifpredict/common/paths.py`.
 - WGS tools + package in one conda env (fastp, unicycler, SPAdes, quast, busco, skani, BLAST+, DIAMOND,
   seqtk, seqkit, NCBI `datasets`, pinned versions): from the repo root,
   `micromamba create -y -n nifwgs -f environment.yml && micromamba activate nifwgs`.
-  The solve itself is not covered by the test suite (see `tests/unit/test_mu6_env_files.py` for the static checks).
+  The solve itself is not covered by the test suite (see `tests/unit/test_environment_files.py` for the static checks).
 - prokka/bakta for annotation are not in `environment.yml`; the maintainer's own env is `prokka_test`.
 
 ## Public data
