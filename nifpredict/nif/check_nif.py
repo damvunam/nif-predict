@@ -2,9 +2,12 @@
 import os
 import csv
 import argparse
+import hashlib
 import subprocess
 import sys
+import traceback
 from datetime import datetime
+from pathlib import Path
 
 from nifpredict.common import paths
 
@@ -108,6 +111,86 @@ def run_tblastn(ref_path, assembly_path, out_dir, threads, log_path):
     if not run_cmd(cmd, log_path):
         return None
     return hits_path
+
+
+def validate_hits(hits_path, min_columns, old_format_ok=False):
+    """
+    Counts malformed rows in a hits file, before any summarizer runs.
+
+    A row is malformed if it has fewer than ``min_columns`` columns, or if a
+    numeric field cannot be converted to a number. Blank lines are not
+    malformed; an empty file (or a file of only blank lines) is valid.
+
+    ``old_format_ok`` is True only for tblastn: a file whose rows are ALL
+    short is the known old 9-column format, which summarize_tblastn already
+    reports via its own branch (and an existing test pins that branch). In
+    that case short rows are not counted here, so the old-format branch
+    survives; a numeric failure on a full-length row is still malformed.
+    For diamond there is no old-format branch, so short rows always count.
+
+    Returns:
+        tuple: (malformed_count, first_malformed_line_or_None). The first
+        line is the raw line, truncated to 200 characters.
+    """
+    if min_columns == 11:
+        numeric = [(2, float), (3, int), (4, int), (5, float), (6, float),
+                   (7, int), (8, int), (9, int), (10, int)]
+    elif min_columns == 6:
+        numeric = [(2, float), (3, int), (4, float), (5, float)]
+    else:
+        numeric = [(i, float) for i in range(2, min_columns)]
+    rows = []
+    with open(hits_path) as f:
+        for line in f:
+            if not line.strip():
+                continue
+            row = next(csv.reader([line], delimiter="\t"))
+            if not row or not any(cell.strip() for cell in row):
+                continue
+            rows.append((line.rstrip("\r\n"), row))
+    if not rows:
+        return (0, None)
+    has_full_row = any(len(row) >= min_columns for _, row in rows)
+    bad = []
+    for line, row in rows:
+        if len(row) < min_columns:
+            if old_format_ok and not has_full_row:
+                continue
+            bad.append(line)
+            continue
+        for idx, conv in numeric:
+            if idx >= len(row):
+                break
+            try:
+                conv(row[idx])
+            except (ValueError, TypeError):
+                bad.append(line)
+                break
+    if not bad:
+        return (0, None)
+    return (len(bad), bad[0][:200])
+
+
+def expected_ref_md5(ref_path):
+    """
+    Looks up a reference file in MANIFEST.tsv, read at call time.
+
+    Returns:
+        tuple: (manifest_id, md5) for the row whose
+        ``(paths.REPO_ROOT / local_file).resolve()`` equals
+        ``Path(ref_path).resolve()``, or None if no row matches.
+        A MANIFEST that cannot be read raises (callers turn it into an
+        ERROR via the outer catch in main).
+    """
+    with open(paths.MANIFEST, newline="") as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            local_file = row.get("local_file")
+            if not local_file:
+                continue
+            if (paths.REPO_ROOT / local_file).resolve() == Path(ref_path).resolve():
+                return (row["id"], row["md5"])
+    return None
 
 
 def summarize_tblastn(hits_path, gene_map):
@@ -297,6 +380,26 @@ def is_nif_present_reads(summary,
 
 
 def main(argv=None) -> int:
+    """Outer wrapper: an unexpected Exception becomes an ERROR log line + exit 1.
+
+    SystemExit (argparse) and KeyboardInterrupt are BaseExceptions, not
+    Exceptions, so they pass through untouched, as specified.
+    """
+    holder = {}
+    try:
+        return _main_impl(argv, holder)
+    except Exception as e:
+        traceback.print_exc()
+        log_path = holder.get("log_path")
+        if log_path is not None:
+            try:
+                write_log(log_path, f"ERROR: no VERDICT - unexpected {type(e).__name__}: {e}")
+            except Exception:
+                pass
+        return 1
+
+
+def _main_impl(argv=None, _log_holder=None) -> int:
     parser = argparse.ArgumentParser(description="Check whether a WGS sample carries nifH/nifD/nifK.")
     # FIX (W11): -s is required; running without it must not silently fall back to a fixed sample
     parser.add_argument("-s", "--sample", required=True, help="Sample name (required)")
@@ -314,13 +417,20 @@ def main(argv=None) -> int:
     if args.reads_dir is None:
         args.reads_dir = str(paths.wgs_dir(args.sample, "qc"))
 
-    mode = "assembly" if args.assembly and os.path.exists(args.assembly) else "reads"
+    # MU8: reads mode only when -a was NOT given; a given -a that does not
+    # exist is an error, never a silent fall-back to reads.
+    mode = "assembly" if args.assembly else "reads"
     out_dir = str(paths.nif_dir(args.sample, mode, args.out_dir))
     os.makedirs(out_dir, exist_ok=True)
     log_path = os.path.join(out_dir, f"{args.sample}_nif_check.log")
+    if _log_holder is not None:
+        _log_holder["log_path"] = log_path
     # FIX (A, P1): one log per run - start empty instead of appending to an old run's log
     open(log_path, "w").close()
     write_log(log_path, f"=== nif check for {args.sample} ===")
+    if args.assembly and not os.path.exists(args.assembly):
+        write_log(log_path, f"ERROR: no VERDICT - assembly not found: {args.assembly}")
+        return 1
 
     ref_path = args.ref
     if os.path.exists(ref_path) and os.path.getsize(ref_path) > 0:
@@ -331,6 +441,25 @@ def main(argv=None) -> int:
         # FIX (MU1): branch (a) - reference file missing or empty, no VERDICT can be produced
         write_log(log_path, "ERROR: no VERDICT - reference file missing or empty")
         return 1
+    # MU8 (item 5): md5 of the reference file, checked against MANIFEST,
+    # after the missing/empty branch, before load_gene_map. A MANIFEST that
+    # cannot be read raises here and is turned into an ERROR by main().
+    hasher = hashlib.md5()
+    with open(ref_path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            hasher.update(chunk)
+    actual_md5 = hasher.hexdigest()
+    write_log(log_path, f"Reference md5: {actual_md5}")
+    expected = expected_ref_md5(ref_path)
+    if expected is None:
+        write_log(log_path, "Warning: reference not listed in MANIFEST, md5 not checked")
+    else:
+        manifest_id, manifest_md5 = expected
+        if actual_md5 != manifest_md5:
+            write_log(log_path, f"Error: reference md5 {actual_md5} != MANIFEST {manifest_md5} ({manifest_id})")
+            write_log(log_path, "ERROR: no VERDICT - reference md5 mismatch")
+            return 1
+        write_log(log_path, f"Reference verified against MANIFEST: {manifest_id}")
     gene_map = load_gene_map(ref_path)
 
     # FIX: guard against a silent false ABSENT - if any gene has 0 references
@@ -343,12 +472,17 @@ def main(argv=None) -> int:
         write_log(log_path, "ERROR: no VERDICT - a nif gene has 0 reference proteins")
         return 1
 
-    if args.assembly and os.path.exists(args.assembly):
+    if args.assembly:
         write_log(log_path, f"Mode: assembly ({args.assembly})")
         hits_path = run_tblastn(ref_path, args.assembly, out_dir, args.threads, log_path)
         if hits_path is None:
             # FIX (MU1): branch (c) - run_tblastn failed (makeblastdb/tblastn error or not in PATH), no VERDICT can be produced
             write_log(log_path, "ERROR: no VERDICT - tblastn failed")
+            return 1
+        # MU8 (item 3): malformed hits are an error, never silently skipped.
+        bad_count, first_bad = validate_hits(hits_path, 11, old_format_ok=True)
+        if bad_count >= 1:
+            write_log(log_path, f"ERROR: no VERDICT - malformed hits: {bad_count} line(s), first: {first_bad}")
             return 1
         # FIX (W13): check if summarize_tblastn returned None (invalid/old 9-column format) before calling is_nif_present_assembly
         # verdict, reasons = is_nif_present_assembly(summarize_tblastn(hits_path, gene_map))
@@ -360,20 +494,29 @@ def main(argv=None) -> int:
             return 1
         verdict, reasons = is_nif_present_assembly(best_hits)
     else:
-        if args.assembly:
-            write_log(log_path, f"Warning: assembly not found ({args.assembly}), falling back to reads")
+        # MU8 (item 2): reads mode requires BOTH R1 and R2. No reads at all
+        # keeps the old branch (e) message (an existing test pins it); a
+        # single missing file is its own error.
         reads_paths = [os.path.join(args.reads_dir, f"{args.sample}_R{i}.trim.fastq.gz") for i in (1, 2)]
-        reads_paths = [p for p in reads_paths if os.path.exists(p)]
+        missing_reads = [p for p in reads_paths if not os.path.exists(p)]
         write_log(log_path, f"Mode: reads ({reads_paths})")
-        if not reads_paths:
+        if len(missing_reads) == 2:
             write_log(log_path, f"Error: no trimmed reads found in {args.reads_dir}")
             # FIX (MU1): branch (e) - no trimmed reads found, no VERDICT can be produced
             write_log(log_path, "ERROR: no VERDICT - no trimmed reads found")
+            return 1
+        if missing_reads:
+            write_log(log_path, f"ERROR: no VERDICT - reads not found: {os.path.basename(missing_reads[0])}")
             return 1
         hits_path = run_diamond_reads(ref_path, reads_paths, out_dir, args.threads, log_path)
         if hits_path is None:
             # FIX (MU1): branch (f) - run_diamond_reads failed, no VERDICT can be produced
             write_log(log_path, "ERROR: no VERDICT - diamond reads search failed")
+            return 1
+        # MU8 (item 3): malformed hits are an error, never silently skipped.
+        bad_count, first_bad = validate_hits(hits_path, 6, old_format_ok=False)
+        if bad_count >= 1:
+            write_log(log_path, f"ERROR: no VERDICT - malformed hits: {bad_count} line(s), first: {first_bad}")
             return 1
         verdict, reasons = is_nif_present_reads(summarize_reads(hits_path, gene_map))
 
