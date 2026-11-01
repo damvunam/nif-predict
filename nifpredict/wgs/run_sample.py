@@ -463,8 +463,45 @@ def is_sample_qc_gate_passed(fastp_json_path, sample_name):
     return True
 
 
+# FIX (MU9): rename a non-empty assembly directory left behind by an interrupted run so a fresh assembly starts clean instead of resuming broken SPAdes state
+def archive_incomplete_dir(dir_path, now=None) -> str | None:
+    """Rename a non-empty directory to a timestamped ``.incomplete_*`` sibling.
+
+    Args:
+        dir_path: Path to the directory that may hold an incomplete assembly.
+        now: Optional ``datetime.datetime`` used for the timestamp (defaults to
+            ``datetime.datetime.now()`` when omitted, mainly to make tests
+            deterministic).
+
+    Returns:
+        str | None: Destination path as a string when the directory was
+        renamed, or None when nothing was renamed (path does not exist,
+        is not a directory, or the directory is empty).
+    """
+    normalized = os.path.normpath(dir_path)
+    if not os.path.isdir(normalized):
+        return None
+    if not os.listdir(normalized):
+        return None
+    timestamp = (now if now is not None else datetime.datetime.now()).strftime("%Y%m%d_%H%M%S")
+    base_dest = f"{normalized}.incomplete_{timestamp}"
+    dest = base_dest
+    suffix = 2
+    while os.path.lexists(dest):
+        dest = f"{base_dest}_{suffix}"
+        suffix += 1
+    os.rename(normalized, dest)
+    return dest
+
+
 def run_sample_assembly(platform, assembly_dir, trim_r1_path, trim_r2_path, threads):
     """Run de novo assembly if output assembly FASTA does not exist.
+
+    If the assembly directory is non-empty but holds no assembly FASTA (an
+    interrupted run left SPAdes state behind), the whole directory is first
+    renamed by :func:`archive_incomplete_dir` to a timestamped
+    ``.incomplete_*`` sibling and a clean assembly is started in a freshly
+    created directory. If the rename fails, assembly is not attempted.
 
     Args:
         platform: Sequencing platform ('short').
@@ -482,6 +519,15 @@ def run_sample_assembly(platform, assembly_dir, trim_r1_path, trim_r2_path, thre
     if os.path.exists(assembly_fasta_path):
         print(f"Warning: {assembly_fasta_path} exists, skipping assembly.")
         return assembly_fasta_path
+
+    # FIX (MU9): archive an incomplete assembly directory before starting clean
+    try:
+        archived = archive_incomplete_dir(assembly_dir)
+    except OSError as e:
+        print(f"Error: cannot move incomplete assembly {assembly_dir}: {e}")
+        return None
+    if archived is not None:
+        print(f"Warning: incomplete assembly moved to {archived}; starting a clean assembly")
 
     # 2. Run assembly and use returned path
     os.makedirs(assembly_dir, exist_ok=True)
