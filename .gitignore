@@ -103,3 +103,7 @@ GEMINI.md
 *.parquet
 *.pkl
 *.joblib
+
+/muse/
+
+/architect/
