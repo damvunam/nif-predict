@@ -3,21 +3,21 @@
 import json
 import os
 import uuid
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Sequence
+from typing import Any
 
 import pandas as pd
 
-from nifpredict.ml.features.feature_extractor import GenomeFeatureExtractor
 from nifpredict.common.config import AppConfig
-
+from nifpredict.ml.features.feature_extractor import GenomeFeatureExtractor
 
 IDENTIFIER_COLUMNS = {"accession_id", "status"}
 
 
 def build_feature_matrix(
-    raw_records: List[Dict[str, Any]],
+    raw_records: list[dict[str, Any]],
     config: AppConfig,
 ) -> pd.DataFrame:
     """Fit once on all records and create one consistent feature matrix."""
@@ -83,7 +83,7 @@ def write_feature_matrix(feature_frame: pd.DataFrame, output_path: Path) -> None
             pass
 
 
-def get_feature_names(feature_frame: pd.DataFrame) -> List[str]:
+def get_feature_names(feature_frame: pd.DataFrame) -> list[str]:
     """Return matrix columns that contain model features."""
     return [
         column for column in feature_frame.columns if column not in IDENTIFIER_COLUMNS
@@ -94,7 +94,7 @@ def write_run_metadata(
     metadata_path: Path,
     feature_frame: pd.DataFrame,
     requested_accessions: Sequence[str],
-    failures: Dict[str, str],
+    failures: dict[str, str],
     source_provenance: Mapping[str, Any] | None = None,
 ) -> None:
     """Write feature names, counts, and failure details as JSON."""

@@ -11,21 +11,19 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from tqdm import tqdm
 
 from nifpredict.common import paths
-from nifpredict.ml.data import NCBIDownloader, NCBIExtractor
 from nifpredict.common.config import load_config
 from nifpredict.common.logger import setup_logger_from_config
-
+from nifpredict.ml.data import NCBIDownloader, NCBIExtractor
 
 PROJECT_ROOT = paths.REPO_ROOT
 DEFAULT_BATCH_FILE = paths.ML_BATCH_ACCESSIONS
 
 
-def cleanup_zip(zip_path: Optional[Path], logger: logging.Logger) -> None:
+def cleanup_zip(zip_path: Path | None, logger: logging.Logger) -> None:
     """Xóa tệp ZIP tạm thời theo cách an toàn và idempotent."""
     if zip_path is None or not zip_path.exists():
         return
@@ -37,7 +35,7 @@ def cleanup_zip(zip_path: Optional[Path], logger: logging.Logger) -> None:
         logger.warning("Không thể dọn dẹp tệp ZIP %s: %s", zip_path, exc)
 
 
-def load_accessions(batch_file: Path, logger: logging.Logger) -> List[str]:
+def load_accessions(batch_file: Path, logger: logging.Logger) -> list[str]:
     """
     Đọc accession từ tệp batch.
 
@@ -75,8 +73,8 @@ def validate_extracted_files(
     logger.info("=== 3. KIỂM TRA TÍNH TOÀN VẸN DỮ LIỆU ===")
 
     target_extensions = {".fna", ".faa", ".gff", ".jsonl", ".json"}
-    valid_files: List[Tuple[Path, int]] = []
-    invalid_files: List[Path] = []
+    valid_files: list[tuple[Path, int]] = []
+    invalid_files: list[Path] = []
 
     def scan_directory(directory: Path) -> None:
         if not directory.exists():
@@ -141,7 +139,7 @@ def run_test_workflow(
 ) -> bool:
     """Chạy quy trình tải, giải nén và xác minh cho một accession."""
     logger.info("=== BẮT ĐẦU WORKFLOW: %s ===", accession)
-    zip_path: Optional[Path] = None
+    zip_path: Path | None = None
 
     try:
         logger.info("=== 1. TẢI ZIP PACKAGE TỪ NCBI ===")
@@ -257,9 +255,9 @@ def main() -> None:
         logger.critical("Không thể khởi tạo cấu hình hoặc thư mục dữ liệu: %s", exc)
         sys.exit(2)
 
-    downloader: Optional[NCBIDownloader] = None
-    successful: List[str] = []
-    failed: List[str] = []
+    downloader: NCBIDownloader | None = None
+    successful: list[str] = []
+    failed: list[str] = []
 
     try:
         downloader = NCBIDownloader(config=config, logger=logger)

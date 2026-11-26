@@ -10,10 +10,17 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from nifpredict.ml.evaluation._hmm_panel_files import iter_fasta_records, sequence_sha256, sha256_file
+from nifpredict.ml.evaluation._hmm_panel_files import (
+    iter_fasta_records,
+    sequence_sha256,
+    sha256_file,
+)
 from nifpredict.ml.evaluation._hmm_panel_inputs import audit_panel_inputs
 from nifpredict.ml.evaluation._hmm_panel_manifest import load_panel_spec
-from nifpredict.ml.evaluation._hmm_panel_scan_report import build_run_manifest, write_hits
+from nifpredict.ml.evaluation._hmm_panel_scan_report import (
+    build_run_manifest,
+    write_hits,
+)
 from nifpredict.ml.evaluation._hmm_panel_scan_types import (
     HIT_COLUMNS,
     FastaScanResult,

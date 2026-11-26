@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from nifpredict.common import paths
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -12,6 +11,7 @@ import pytest
 
 import nifpredict.ml.workflows.training.refit as refit_module
 import nifpredict.ml.workflows.training.service as service_module
+from nifpredict.common import paths
 from nifpredict.ml.evaluation import GroupedCVConfig, generate_fold_manifest
 from nifpredict.ml.models import load_model_artifact
 from nifpredict.ml.workflows.training import (

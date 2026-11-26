@@ -46,7 +46,38 @@ stages:
       - results/labeling/label_validation_report.json:
           cache: false
 
-  # Stage 5: Dự đoán khả năng cố định đạm (Inference/Evaluation)
+  # Stage 5: Huấn luyện baseline ML (grouped CV theo family, refit model đã chọn).
+  # Chạy sau label_dataset; cần label_manifest.csv có dòng nhãn thật (hiện 0 dòng,
+  # label_dataset sẽ lỗi validation rõ ràng, không tạo training set rỗng).
+  # --refit-selected lưu model vào models/baseline-v1/ (selected_model.joblib,
+  # metadata.json, feature_names.json); MLflow ghi vào mlruns/ (gitignored).
+  train:
+    cmd: python scripts/ml/train_pipeline.py --run-name baseline-v1 --refit-selected
+    deps:
+      - scripts/ml/train_pipeline.py
+      - nifpredict/ml/workflows/training/service.py
+      - nifpredict/ml/workflows/training/artifacts.py
+      - nifpredict/ml/workflows/training/refit.py
+      - nifpredict/ml/workflows/training/tracking.py
+      - nifpredict/ml/evaluation/cross_validation.py
+      - nifpredict/ml/models/trainer.py
+      - nifpredict/ml/models/metrics.py
+      - nifpredict/ml/models/selection.py
+      - nifpredict/ml/models/persistence.py
+      - data/processed/training_dataset.parquet
+    outs:
+      - results/training/baseline-v1:
+          cache: false
+      - models/baseline-v1:
+          cache: false
+    metrics:
+      - results/training/baseline-v1/aggregate_metrics.csv:
+          cache: false
+
+  # Stage 6: Dự đoán khả năng cố định đạm (Inference/Evaluation)
+  # LƯU Ý: stage này dùng NifPredictor rule-based (HMM 3 gen nifH/D/K, chấm
+  # 35+35+30, >=70), KHÔNG dùng model đã train ở stage train. Inference bằng
+  # model đã train chưa có script nào; đừng nhầm 2 đường predict này với nhau.
   predict:
     cmd: python scripts/ml/predict.py --file data/batch_accessions.txt
     deps:

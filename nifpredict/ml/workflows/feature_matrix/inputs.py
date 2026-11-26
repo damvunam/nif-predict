@@ -5,21 +5,20 @@ import re
 import shutil
 import subprocess
 import uuid
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from tqdm import tqdm
 
 from nifpredict.common.logger import get_logger
 
-
 LOGGER = get_logger("nifpredict.ml.workflows.feature_matrix.inputs")
 ACCESSION_PATTERN = re.compile(r"GC[AF]_\d+\.\d+")
-PathMap = Dict[str, Path]
-PathMaps = Tuple[PathMap, PathMap, PathMap]
+PathMap = dict[str, Path]
+PathMaps = tuple[PathMap, PathMap, PathMap]
 
 
-def load_accessions(input_file: Path) -> List[str]:
+def load_accessions(input_file: Path) -> list[str]:
     """Load accessions while ignoring blank lines and comment lines."""
     try:
         with input_file.open("r", encoding="utf-8") as handle:
@@ -44,7 +43,7 @@ def load_accessions(input_file: Path) -> List[str]:
     return accessions
 
 
-def _extract_accession(path: Path) -> Optional[str]:
+def _extract_accession(path: Path) -> str | None:
     match = ACCESSION_PATTERN.search(str(path))
     return match.group(0) if match else None
 
@@ -53,7 +52,7 @@ def _candidate_score(
     path: Path,
     file_type: str,
     root_priority: int,
-) -> Tuple[int, int, str]:
+) -> tuple[int, int, str]:
     canonical_markers = {
         "faa": ("_protein.faa",),
         "gff": ("_genomic.gff", "_genomic.gff3"),
@@ -68,7 +67,7 @@ def _candidate_score(
 
 def _select_candidate(
     path_map: PathMap,
-    score_map: Dict[str, Tuple[int, int, str]],
+    score_map: dict[str, tuple[int, int, str]],
     accession: str,
     path: Path,
     file_type: str,
@@ -82,17 +81,17 @@ def _select_candidate(
 
 def index_genome_paths(
     genomes_dir: Path,
-    annotation_dir: Optional[Path] = None,
+    annotation_dir: Path | None = None,
 ) -> PathMaps:
     """Recursively index FAA, GFF, and genomic FASTA files by accession."""
     faa_map: PathMap = {}
     gff_map: PathMap = {}
     fna_map: PathMap = {}
-    faa_scores: Dict[str, Tuple[int, int, str]] = {}
-    gff_scores: Dict[str, Tuple[int, int, str]] = {}
-    fna_scores: Dict[str, Tuple[int, int, str]] = {}
+    faa_scores: dict[str, tuple[int, int, str]] = {}
+    gff_scores: dict[str, tuple[int, int, str]] = {}
+    fna_scores: dict[str, tuple[int, int, str]] = {}
 
-    search_roots: List[Path] = []
+    search_roots: list[Path] = []
     if annotation_dir is not None and annotation_dir.exists():
         search_roots.append(annotation_dir)
     if genomes_dir.exists() and genomes_dir not in search_roots:
@@ -144,7 +143,7 @@ def _run_prodigal(
     annotation_dir: Path,
     prodigal_executable: str,
     prodigal_mode: str,
-) -> Tuple[Path, Path]:
+) -> tuple[Path, Path]:
     """Generate FAA and GFF files atomically with Prodigal."""
     annotation_dir.mkdir(parents=True, exist_ok=True)
     final_faa = annotation_dir / f"{accession}_protein.faa"
@@ -203,9 +202,9 @@ def prepare_input_files(
     annotation_dir: Path,
     annotate_missing: bool,
     prodigal_mode: str,
-) -> Tuple[PathMap, PathMap, Dict[str, str]]:
+) -> tuple[PathMap, PathMap, dict[str, str]]:
     """Ensure that each possible accession has FAA and GFF inputs."""
-    failures: Dict[str, str] = {}
+    failures: dict[str, str] = {}
     missing = list(
         dict.fromkeys(
             accession

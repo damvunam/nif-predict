@@ -1,17 +1,17 @@
 """Parallel HMM and gene-cluster extraction for feature matrix builds."""
 
+from collections.abc import Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any
 
 import pandas as pd
 from tqdm import tqdm
 
-from nifpredict.ml.features.cluster_filter import ClusterFilter
-from nifpredict.ml.features.hmm_annotator import HMMAnnotator
 from nifpredict.common.config import AppConfig, load_config
 from nifpredict.common.logger import get_logger
-
+from nifpredict.ml.features.cluster_filter import ClusterFilter
+from nifpredict.ml.features.hmm_annotator import HMMAnnotator
 
 LOGGER = get_logger("nifpredict.ml.workflows.feature_matrix.extraction")
 HMM_OUTPUT_COLUMNS = [
@@ -21,9 +21,9 @@ HMM_OUTPUT_COLUMNS = [
     "seq_evalue",
 ]
 
-_worker_config: Optional[AppConfig] = None
-_worker_annotator: Optional[HMMAnnotator] = None
-_worker_cluster_filter: Optional[ClusterFilter] = None
+_worker_config: AppConfig | None = None
+_worker_annotator: HMMAnnotator | None = None
+_worker_cluster_filter: ClusterFilter | None = None
 
 
 def _init_worker() -> None:
@@ -47,7 +47,7 @@ def _process_single_genome(
     accession: str,
     faa_path: Path,
     gff_path: Path,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Run HMM annotation and cluster detection for one genome."""
     global _worker_config, _worker_annotator, _worker_cluster_filter
 
@@ -76,7 +76,7 @@ def _process_single_genome(
     if not hmm_files:
         raise FileNotFoundError(f"No HMM profile files found in {hmm_dir}")
 
-    hit_frames: List[pd.DataFrame] = []
+    hit_frames: list[pd.DataFrame] = []
     for hmm_file in hmm_files:
         hits = _worker_annotator.annotate_to_dataframe(faa_path, hmm_file)
         if not hits.empty:
@@ -91,7 +91,7 @@ def _process_single_genome(
     all_hits.to_csv(output_path, sep="\t", index=False)
 
     gff_frame = _worker_cluster_filter.parse_gff3(gff_path)
-    clusters: List[Any] = []
+    clusters: list[Any] = []
     if not all_hits.empty and not gff_frame.empty:
         clusters = _worker_cluster_filter.group_into_clusters(all_hits, gff_frame)
 
@@ -112,12 +112,12 @@ def _process_single_genome(
 
 def extract_raw_records(
     accessions: Sequence[str],
-    faa_map: Dict[str, Path],
-    gff_map: Dict[str, Path],
-    initial_failures: Dict[str, str],
+    faa_map: dict[str, Path],
+    gff_map: dict[str, Path],
+    initial_failures: dict[str, str],
     num_workers: int,
     batch_size: int,
-) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
     """Extract raw records in parallel while isolating per-genome failures."""
     failures = dict(initial_failures)
     runnable = list(
@@ -129,7 +129,7 @@ def extract_raw_records(
             and accession in gff_map
         )
     )
-    records_by_accession: Dict[str, Dict[str, Any]] = {}
+    records_by_accession: dict[str, dict[str, Any]] = {}
     batches = [
         runnable[index : index + batch_size]
         for index in range(0, len(runnable), batch_size)

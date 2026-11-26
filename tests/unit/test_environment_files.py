@@ -7,8 +7,9 @@ entry without the [dev] extra (bare `pytest` then fails on --cov).
 from __future__ import annotations
 
 import re
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
 ENV = ROOT / "environment.yml"
@@ -74,6 +75,10 @@ def test_environment_yml_pins_every_required_tool_with_version() -> None:
 def test_environment_yml_python_range_matches_numpy_pin() -> None:
     deps = _conda_deps()
     assert deps["python"].startswith("3.12")
+    # numpy must stay on the 1.x line: pyproject requires numpy<2, and a
+    # conda numpy 2.x install used to be silently downgraded by pip.
+    assert "numpy" in deps, "numpy pin missing from environment.yml"
+    assert deps["numpy"].startswith("1."), f"numpy pin must be 1.x, got {deps['numpy']}"
 
 
 def test_environment_yml_pip_entry_installs_dev_extra() -> None:

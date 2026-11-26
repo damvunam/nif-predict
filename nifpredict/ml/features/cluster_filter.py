@@ -4,14 +4,14 @@ Description: Synteny analysis and nitrogenase gene cluster filtering for NifPred
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 import pandas as pd
 from pydantic import BaseModel
 
-from nifpredict.ml.features.gff_mapping import merge_hits_with_gff, parse_gff3
-from nifpredict.common.config import AppConfig, PFAM_TO_GENE_MAP, load_config
+from nifpredict.common.config import PFAM_TO_GENE_MAP, AppConfig, load_config
 from nifpredict.common.logger import get_logger
+from nifpredict.ml.features.gff_mapping import merge_hits_with_gff, parse_gff3
 
 logger = get_logger("nifpredict.ml.features.cluster_filter")
 
@@ -23,32 +23,32 @@ class GeneClusterResult(BaseModel):
     end: int
     span_bp: int
     gene_count: int
-    gene_families: List[str]
-    protein_ids: List[str]
-    strands: List[str]
+    gene_families: list[str]
+    protein_ids: list[str]
+    strands: list[str]
     strand_switches: int
     cluster_type: str
     has_catalytic_core: bool
     is_truncated: bool
-    truncated_side: Optional[str] = None
+    truncated_side: str | None = None
     quality_status: str
 
 
 class ClusterFilter:
-    CORE_H_FAMILIES: Set[str] = {
+    CORE_H_FAMILIES: set[str] = {
         "nifH",
         "vnfH",
         "anfH",
         "PF00142",
         "nitrogenase_reductase",
     }
-    CORE_D_FAMILIES: Set[str] = {"nifD", "vnfD", "anfD", "PF00148"}
-    CORE_K_FAMILIES: Set[str] = {"nifK", "vnfK", "anfK", "PF02826"}
+    CORE_D_FAMILIES: set[str] = {"nifD", "vnfD", "anfD", "PF00148"}
+    CORE_K_FAMILIES: set[str] = {"nifK", "vnfK", "anfK", "PF02826"}
 
-    VNF_SPECIFIC: Set[str] = {"vnfG", "vnfEN", "vnfH", "vnfD", "vnfK", "PF05911"}
-    ANF_SPECIFIC: Set[str] = {"anfG", "anfH", "anfD", "anfK", "PF05910"}
+    VNF_SPECIFIC: set[str] = {"vnfG", "vnfEN", "vnfH", "vnfD", "vnfK", "PF05911"}
+    ANF_SPECIFIC: set[str] = {"anfG", "anfH", "anfD", "anfK", "PF05910"}
 
-    def __init__(self, config: Optional[AppConfig] = None) -> None:
+    def __init__(self, config: AppConfig | None = None) -> None:
         self.config = config or load_config(auto_create_dirs=False)
         synteny_cfg = self.config.biological_thresholds.synteny
 
@@ -72,8 +72,8 @@ class ClusterFilter:
         self,
         df_hits: pd.DataFrame,
         df_gff: pd.DataFrame,
-        contig_lengths: Optional[Dict[str, int]] = None,
-    ) -> List[Dict[str, Any]]:
+        contig_lengths: dict[str, int] | None = None,
+    ) -> list[dict[str, Any]]:
         if df_hits.empty:
             return []
 
@@ -99,8 +99,8 @@ class ClusterFilter:
 
         merged = merged.sort_values(by=["seqid", "start", "end"]).reset_index(drop=True)
 
-        raw_clusters: List[List[Dict[str, Any]]] = []
-        current_cluster: List[Dict[str, Any]] = []
+        raw_clusters: list[list[dict[str, Any]]] = []
+        current_cluster: list[dict[str, Any]] = []
         current_max_end = 0
 
         for row in merged.itertuples(index=False):
@@ -131,7 +131,7 @@ class ClusterFilter:
         if current_cluster:
             raw_clusters.append(current_cluster)
 
-        valid_clusters: List[Dict[str, Any]] = []
+        valid_clusters: list[dict[str, Any]] = []
         for idx, cluster_genes in enumerate(raw_clusters, 1):
             cluster_info = self._analyze_cluster(
                 cluster_id=f"cluster_{idx:04d}",
@@ -154,7 +154,7 @@ class ClusterFilter:
 
         return valid_clusters
 
-    def _resolve_cluster_type(self, raw_families: Set[str]) -> Tuple[str, bool, bool]:
+    def _resolve_cluster_type(self, raw_families: set[str]) -> tuple[str, bool, bool]:
         mapped_families = set(raw_families)
         for family in raw_families:
             if family in PFAM_TO_GENE_MAP:
@@ -193,9 +193,9 @@ class ClusterFilter:
     def _analyze_cluster(
         self,
         cluster_id: str,
-        cluster_genes: List[Dict[str, Any]],
-        contig_lengths: Optional[Dict[str, int]] = None,
-    ) -> Dict[str, Any]:
+        cluster_genes: list[dict[str, Any]],
+        contig_lengths: dict[str, int] | None = None,
+    ) -> dict[str, Any]:
         seqid = cluster_genes[0]["seqid"]
         start_pos = min(gene["start"] for gene in cluster_genes)
         end_pos = max(gene["end"] for gene in cluster_genes)
@@ -215,7 +215,7 @@ class ClusterFilter:
         # One protein accession may represent several genomic CDS loci, while
         # one locus may receive multiple HMM family hits. Count and orient CDS
         # loci, not unique protein sequences or raw HMM rows.
-        loci: Dict[Any, Dict[str, Any]] = {}
+        loci: dict[Any, dict[str, Any]] = {}
         for gene in cluster_genes:
             locus_key = gene.get("_feature_row_id")
             if locus_key is None:

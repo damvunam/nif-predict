@@ -1,7 +1,8 @@
 import sys
-import json
 from pathlib import Path
+
 from nifpredict.ml.predictor import NifPredictor
+
 
 def main():
     if len(sys.argv) < 2:
@@ -18,7 +19,7 @@ def main():
             print(f"Lỗi: Không tìm thấy file {file_path}")
             sys.exit(1)
 
-        with open(file_path, "r") as f:
+        with open(file_path) as f:
             accessions = [line.strip() for line in f if line.strip() and not line.startswith("#")]
 
         results = predictor.predict_batch(accessions)

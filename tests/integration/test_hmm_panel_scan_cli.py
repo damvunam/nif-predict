@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from nifpredict.common import paths
 import importlib.util
 from pathlib import Path
 from types import ModuleType
 
 import pytest
 
+from nifpredict.common import paths
 from nifpredict.ml.evaluation.hmm_panel_scan import PanelScanResult
 
 ROOT = paths.REPO_ROOT

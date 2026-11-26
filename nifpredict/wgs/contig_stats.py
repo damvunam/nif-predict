@@ -64,7 +64,7 @@ def parse_fasta(fasta_path):
     seq_chunks = []
 
     # 1. Read FASTA line by line
-    with open(fasta_path, "r") as f:
+    with open(fasta_path) as f:
         for line in f:
             line = line.strip()
             if not line:

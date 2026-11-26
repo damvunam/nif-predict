@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 import re
 import urllib.parse
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any
 
 import pandas as pd
 
@@ -16,7 +17,7 @@ _PRODIGAL_ID_RE = re.compile(r"^\d+_(\d+)$")
 _ACCESSION_LIKE_RE = re.compile(r"^[A-Za-z]{1,10}_?\d+(?:\.\d+)?$")
 
 
-def _attribute_values(value: Optional[str]) -> Iterable[str]:
+def _attribute_values(value: str | None) -> Iterable[str]:
     """Yield non-empty values from a possibly comma-separated attribute."""
     if not value:
         return
@@ -26,7 +27,7 @@ def _attribute_values(value: Optional[str]) -> Iterable[str]:
             yield cleaned
 
 
-def _dbxref_accessions(value: Optional[str]) -> Iterable[str]:
+def _dbxref_accessions(value: str | None) -> Iterable[str]:
     """Yield sequence accessions from trusted GFF3 Dbxref namespaces."""
     for item in _attribute_values(value):
         namespace, separator, accession = item.partition(":")
@@ -39,8 +40,8 @@ def _dbxref_accessions(value: Optional[str]) -> Iterable[str]:
 def _build_id_aliases(
     seqid: str,
     source: str,
-    attributes: Dict[str, str],
-) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+    attributes: dict[str, str],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Return direct and inferred aliases for one CDS.
 
     Direct aliases identify the translated sequence itself and may legitimately
@@ -48,7 +49,7 @@ def _build_id_aliases(
     are reconstructed from annotation conventions, so they are only safe when
     unique within the GFF3 file.
     """
-    direct: Set[str] = set(_attribute_values(attributes.get("protein_id")))
+    direct: set[str] = set(_attribute_values(attributes.get("protein_id")))
     direct.update(_dbxref_accessions(attributes.get("Dbxref")))
 
     name = attributes.get("Name", "").strip()
@@ -56,7 +57,7 @@ def _build_id_aliases(
     if name and (name in protein_ids or _ACCESSION_LIKE_RE.fullmatch(name)):
         direct.add(name)
 
-    inferred: Set[str] = set()
+    inferred: set[str] = set()
     for key in ("locus_tag", "ID", "Parent"):
         for value in _attribute_values(attributes.get(key)):
             inferred.add(value)
@@ -97,7 +98,7 @@ def parse_gff3(gff_path: Path) -> pd.DataFrame:
     if not gff_path.is_file():
         return pd.DataFrame(columns=columns)
 
-    records: List[Dict[str, Any]] = []
+    records: list[dict[str, Any]] = []
     with gff_path.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, 1):
             if line.startswith("#") or not line.strip():
@@ -108,7 +109,7 @@ def parse_gff3(gff_path: Path) -> pd.DataFrame:
                 continue
 
             seqid, source, _, start_raw, end_raw, _, strand, _, attributes_raw = parts
-            attributes: Dict[str, str] = {}
+            attributes: dict[str, str] = {}
             for item in attributes_raw.split(";"):
                 if "=" not in item:
                     continue
@@ -167,8 +168,8 @@ def parse_gff3(gff_path: Path) -> pd.DataFrame:
     return result
 
 
-def _row_aliases(row: Any, column: str) -> Set[str]:
-    aliases: Set[str] = set()
+def _row_aliases(row: Any, column: str) -> set[str]:
+    aliases: set[str] = set()
     values = getattr(row, column, ())
     if isinstance(values, str):
         values = (values,)
@@ -180,7 +181,7 @@ def _row_aliases(row: Any, column: str) -> Set[str]:
     return aliases
 
 
-def _aliases_for_feature(row: Any) -> Tuple[Set[str], Set[str]]:
+def _aliases_for_feature(row: Any) -> tuple[set[str], set[str]]:
     """Read provenance-aware aliases, with compatibility for older DataFrames."""
     has_provenance = hasattr(row, "direct_id_aliases") or hasattr(
         row, "inferred_id_aliases"
@@ -238,7 +239,7 @@ def merge_hits_with_gff(df_hits: pd.DataFrame, df_gff: pd.DataFrame) -> pd.DataF
 
     gff = df_gff.reset_index(drop=True).copy()
     gff["_feature_row_id"] = gff.index
-    alias_records: List[Dict[str, Any]] = []
+    alias_records: list[dict[str, Any]] = []
     for feature_row_id, row in enumerate(gff.itertuples(index=False)):
         direct, inferred = _aliases_for_feature(row)
         alias_records.extend(

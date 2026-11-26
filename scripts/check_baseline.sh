@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # check_baseline.sh — regression check after any change to the WGS / nif code.
-#   1. pytest (project venv: .venv/bin/python, override with PYTEST_PYTHON=...)
+#   1. pytest (project venv: nifpredict/bin/python, override with PYTEST_PYTHON=...)
+#   Every python invocation below uses $PYTEST_PYTHON (the project venv),
+#   never bare `python`: the conda env's python is not the venv python.
 #   2. PSON runner on the existing outputs in results/wgs/PSON/: must print DONE, exit 0 and create no file
 #      (stops BEFORE running if an output that would trigger a heavy step - fastp, assembly, QUAST/BUSCO, skani - is missing)
 #   3. check_nif on the 5 controls: per-gene lines + VERDICT and tblastn_hits.tsv must equal tests/baseline/<sample>/
@@ -10,7 +12,7 @@
 set -euo pipefail
 export LC_ALL=C
 cd "$(dirname "$0")/.."
-PYTEST_PYTHON="${PYTEST_PYTHON:-.venv/bin/python}"
+PYTEST_PYTHON="${PYTEST_PYTHON:-nifpredict/bin/python}"
 OUT="results/checks/$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$OUT"
 exec > >(tee "$OUT/summary.txt") 2>&1
@@ -22,7 +24,7 @@ if pgrep -af "unicycler|spades|busco|prokka|fastp|wget|aria2c" > "$OUT/pgrep_bef
 fi
 
 # Paths come from nifpredict/common/paths.py only
-eval "$(python - <<'PY'
+eval "$("$PYTEST_PYTHON" - <<'PY'
 from nifpredict.common import paths
 pson = paths.WGS_RESULTS / "PSON"
 print(f'READS_DIR="{paths.reads_dir("SRR17868980")}"')
@@ -54,7 +56,7 @@ if [ -n "$MISSING" ]; then
 else
   find "$PSON_DIR" -type f | sort > "$OUT/pson_files_before.txt"
   set +e
-  python -m nifpredict.wgs.run_sample -s PSON -d "$READS_DIR" -r "$PSON_REF" > "$OUT/runner_pson.log" 2>&1; rc=$?
+  "$PYTEST_PYTHON" -m nifpredict.wgs.run_sample -s PSON -d "$READS_DIR" -r "$PSON_REF" > "$OUT/runner_pson.log" 2>&1; rc=$?
   set -e
   find "$PSON_DIR" -type f | sort > "$OUT/pson_files_after.txt"
   grep -E '^(COVERAGE|IDENTITY|DONE)' "$OUT/runner_pson.log" || true
@@ -66,7 +68,7 @@ fi
 echo "== 3. check_nif on 5 controls vs tests/baseline"
 declare -A ASM=([CTRL_AVIN]="$CTRL_AVIN" [CTRL_PWLY]="$CTRL_PWLY" [CTRL_BSUB]="$CTRL_BSUB" [PSON]="$PSON_ASM" [PSON_REF]="$PSON_REF")
 for s in CTRL_AVIN CTRL_PWLY CTRL_BSUB PSON PSON_REF; do
-  set +e; python -m nifpredict.nif.check_nif -s "$s" -a "${ASM[$s]}" -o "$OUT/nif" > /dev/null 2>&1; rc=$?; set -e
+  set +e; "$PYTEST_PYTHON" -m nifpredict.nif.check_nif -s "$s" -a "${ASM[$s]}" -o "$OUT/nif" > /dev/null 2>&1; rc=$?; set -e
   d="$OUT/nif/$s/assembly"
   grep -E "Reference proteins per gene|^\[[^]]*\]   nif[HDK]: |VERDICT:" "$d/${s}_nif_check.log" 2>/dev/null | cut -c23- > "$d/verdict.txt" || true
   v=same; h=same

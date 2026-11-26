@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from nifpredict.common import paths
 import gzip
 import hashlib
 import io
@@ -12,6 +11,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from nifpredict.common import paths
 from nifpredict.ml.evaluation.hmm_panel_audit import (
     AcceptedProteinHit,
     HMMPanelAuditError,

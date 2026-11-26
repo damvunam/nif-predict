@@ -17,7 +17,6 @@ from nifpredict.ml.evaluation import (
     run_grouped_cross_validation,
 )
 from nifpredict.ml.models import prepare_training_data
-
 from nifpredict.ml.workflows.training.artifacts import (
     AtomicTrainingOutputs,
     fingerprint_dataset,
@@ -26,7 +25,10 @@ from nifpredict.ml.workflows.training.artifacts import (
     write_csv,
     write_json,
 )
-from nifpredict.ml.workflows.training.refit import REFIT_ARTIFACT_FILENAMES, refit_selected_candidate
+from nifpredict.ml.workflows.training.refit import (
+    REFIT_ARTIFACT_FILENAMES,
+    refit_selected_candidate,
+)
 
 TRAINING_RUN_SCHEMA_VERSION = "1.0"
 RUN_ARTIFACT_FILENAMES = (

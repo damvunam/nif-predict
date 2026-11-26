@@ -18,7 +18,10 @@ from nifpredict.ml.evaluation._hmm_panel_files import (
     sha256_file,
     ungap_stockholm_sequence,
 )
-from nifpredict.ml.evaluation._hmm_panel_inputs import audit_panel_inputs, download_panel_inputs
+from nifpredict.ml.evaluation._hmm_panel_inputs import (
+    audit_panel_inputs,
+    download_panel_inputs,
+)
 from nifpredict.ml.evaluation._hmm_panel_leakage import (
     audit_exact_seed_leakage,
     build_seed_hash_index,

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from nifpredict.common import paths
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -13,6 +11,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC
 
 import nifpredict.ml.evaluation.cross_validation as cv_module
+from nifpredict.common import paths
 from nifpredict.ml.evaluation import (
     GroupedCVConfig,
     GroupedCVValidationError,

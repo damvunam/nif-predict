@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from nifpredict.common import paths
 import csv
 import json
 import os
@@ -13,8 +12,8 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
+from nifpredict.common import paths
 from nifpredict.ml.workflows.feature_matrix.panel_hits import PANEL_HIT_COLUMNS
-
 
 ROOT = paths.REPO_ROOT
 POSITIVE_ACCESSION = "GCF_000000001.1"

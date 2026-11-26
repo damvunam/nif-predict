@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from nifpredict.common import paths
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+from nifpredict.common import paths
 
 ROOT = paths.REPO_ROOT
 FIXTURE = paths.FIXTURES_DIR / "grouped_training_dataset.csv"

@@ -9,13 +9,12 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Set
 
 import pandas as pd
 
-from nifpredict.ml.features import ClusterFilter, HMMAnnotator
 from nifpredict.common.config import load_config
 from nifpredict.common.logger import setup_logger
+from nifpredict.ml.features import ClusterFilter, HMMAnnotator
 
 
 def parse_args() -> argparse.Namespace:

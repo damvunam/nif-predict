@@ -7,15 +7,15 @@ import json
 import math
 import re
 from collections import Counter, defaultdict
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 import pandas as pd
 
 from nifpredict.ml.features.cluster_filter import ClusterFilter
 from nifpredict.ml.features.gff_mapping import merge_hits_with_gff, parse_gff3
-
 
 PANEL_HIT_COLUMNS = (
     "accession",

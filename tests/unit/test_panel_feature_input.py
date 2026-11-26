@@ -20,7 +20,6 @@ from nifpredict.ml.workflows.feature_matrix.panel_hits import (
     load_panel_feature_input,
 )
 
-
 GCF_ACCESSION = "GCF_000000001.1"
 GCA_ACCESSION = "GCA_000000002.1"
 

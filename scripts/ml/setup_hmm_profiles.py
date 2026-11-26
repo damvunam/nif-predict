@@ -8,20 +8,19 @@ Author: NifPredict Team
 """
 
 import argparse
-from dataclasses import asdict, dataclass
 import gzip
 import hashlib
 import json
-from pathlib import Path
 import shutil
 import subprocess
 import sys
-from typing import Dict, List, Optional, Set
 import urllib.request
-
-from nifpredict.common import paths
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 from filelock import FileLock, Timeout
+
+from nifpredict.common import paths
 
 # Tích hợp cấu hình và logger của NifPredict
 try:
@@ -50,19 +49,23 @@ class HMMProfileSpec:
     category: str
     is_core: bool = False
     cutoff_flag: str = "-cut_ga"  # Options: '-cut_ga', '-cut_tc'
-    download_url: Optional[str] = None
-    expected_sha256: Optional[str] = None
+    download_url: str | None = None
+    expected_sha256: str | None = None
 
 
 # Danh mục HMM Profile chuẩn hóa
-HMM_REGISTRY: List[HMMProfileSpec] = [
+HMM_REGISTRY: list[HMMProfileSpec] = [
     # 1. Gen lõi cố định đạm Mo-nitrogenase
     HMMProfileSpec("nifH", "nifH.hmm", "core_nif", is_core=True),
     HMMProfileSpec("nifD", "nifD.hmm", "core_nif", is_core=True),
     HMMProfileSpec("nifK", "nifK.hmm", "core_nif", is_core=True),
-    HMMProfileSpec("nifE", "nifE.hmm", "core_nif", is_core=True),
-    HMMProfileSpec("nifN", "nifN.hmm", "core_nif", is_core=True),
-    HMMProfileSpec("nifB", "nifB.hmm", "core_nif", is_core=True),
+    # nifE/nifN/nifB không phải is_core: predictor chỉ quét nifH/D/K,
+    # 3 gen này nằm trong accessory_genes của config.yaml, không có URL
+    # tải riêng và không có mục trích từ Pfam-A. Để is_core=True thì
+    # setup luôn exit 1 sau khi đã trích xong 3 profile cần thiết.
+    HMMProfileSpec("nifE", "nifE.hmm", "core_nif"),
+    HMMProfileSpec("nifN", "nifN.hmm", "core_nif"),
+    HMMProfileSpec("nifB", "nifB.hmm", "core_nif"),
     # 2. Alternative Nitrogenase - V-nitrogenase
     HMMProfileSpec("vnfH", "vnfH.hmm", "alternative_nitrogenase"),
     HMMProfileSpec("vnfD", "vnfD.hmm", "alternative_nitrogenase"),
@@ -92,7 +95,7 @@ HMM_REGISTRY: List[HMMProfileSpec] = [
     ),
 ]
 
-HMM_INDEX_EXTENSIONS: Set[str] = {".h3f", ".h3i", ".h3m", ".h3p"}
+HMM_INDEX_EXTENSIONS: set[str] = {".h3f", ".h3i", ".h3m", ".h3p"}
 
 
 def verify_sha256(file_path: Path, expected_hash: str) -> bool:
@@ -211,7 +214,7 @@ def run_hmmpress_safe(hmm_path: Path, force: bool = False) -> bool:
 
 
 def generate_manifest(
-    ready_profiles: Dict[str, HMMProfileSpec], output_dir: Path
+    ready_profiles: dict[str, HMMProfileSpec], output_dir: Path
 ) -> Path:
     """Xuất tệp runtime manifest (hmm_manifest.json) phục vụ các worker phía sau."""
     manifest_path = output_dir / "hmm_manifest.json"
@@ -229,17 +232,85 @@ def generate_manifest(
     return manifest_path
 
 
+# Accession Pfam của 3 gen lõi mà NifPredictor cần. Các spec nifH/nifD/nifK
+# trong HMM_REGISTRY không có download_url riêng: chúng được trích ra từ
+# Pfam-A.hmm (xem extract_profile_from_pfam). Trước đây không có bước trích
+# nào, nên setup_hmm luôn exit 1 vì thiếu gen lõi, và predictor không bao
+# giờ có profile để quét.
+CORE_PFAM_ACCESSIONS: dict[str, str] = {
+    "nifH": "PF00142",
+    "nifD": "PF00148",
+    "nifK": "PF02826",
+}
+
+
+def extract_profile_from_pfam(
+    pfam_path: Path, accession: str, dest_path: Path
+) -> bool:
+    """Trích 1 model khỏi Pfam-A.hmm theo accession, ghi ra file .hmm riêng.
+
+    Pfam-A.hmm là file text, mỗi model là 1 khối kết thúc bằng ``//``.
+    Đọc theo dòng (không nạp cả file ~2,2 GB vào RAM), giữ khối nào có
+    dòng ``ACC`` trùng accession (bỏ hậu tố phiên bản, vd PF00142.22).
+    Không cần hmmfetch: pyhmmer đọc trực tiếp file .hmm text.
+    """
+    wanted = accession.split(".")[0]
+    found = False
+    try:
+        with (
+            open(pfam_path, encoding="utf-8", errors="strict") as src,
+            open(dest_path, "w", encoding="utf-8") as dst,
+        ):
+            block: list[str] = []
+            block_acc: str | None = None
+            for line in src:
+                block.append(line)
+                if line.startswith("ACC"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        block_acc = parts[1].split(".")[0]
+                if line.rstrip() == "//":
+                    if block_acc == wanted:
+                        dst.writelines(block)
+                        found = True
+                    block = []
+                    block_acc = None
+    except OSError as err:
+        logger.error(f"Không đọc/ghi được khi trích {accession}: {err}")
+        return False
+    if not found:
+        dest_path.unlink(missing_ok=True)
+        logger.error(f"Không tìm thấy accession {accession} trong {pfam_path}")
+    return found
+
+
 def setup_hmm_pipeline(
     profiles_dir: Path, force_rebuild: bool = False
-) -> Dict[str, HMMProfileSpec]:
+) -> dict[str, HMMProfileSpec]:
     """Quy trình tổng thể quản lý, chỉ mục hóa và tạo manifest cho HMM Profiles."""
     profiles_dir.mkdir(parents=True, exist_ok=True)
     logger.info(
         f"Khởi chạy quy trình HMM Profiles tại: {profiles_dir.resolve()}"
     )
 
-    ready_profiles: Dict[str, HMMProfileSpec] = {}
-    missing_core: List[str] = []
+    # Trích 3 profile lõi từ Pfam-A trước vòng lặp chính: Pfam-A đứng cuối
+    # registry nhưng nifH/D/K lại đứng đầu, và chúng không có URL riêng.
+    pfam_spec = next(
+        (s for s in HMM_REGISTRY if s.name == "Pfam-A"), None
+    )
+    pfam_file = profiles_dir / "Pfam-A.hmm"
+    if pfam_spec is not None and not pfam_file.is_file():
+        if not download_and_extract_profile(pfam_spec, profiles_dir, timeout=60):
+            logger.critical("Không tải được Pfam-A.hmm, không trích được profile lõi")
+    if pfam_file.is_file():
+        for name, accession in CORE_PFAM_ACCESSIONS.items():
+            dest = profiles_dir / f"{name}.hmm"
+            if not dest.is_file():
+                logger.info(f"Trích {accession} từ Pfam-A.hmm -> {dest.name}")
+                extract_profile_from_pfam(pfam_file, accession, dest)
+
+    ready_profiles: dict[str, HMMProfileSpec] = {}
+    missing_core: list[str] = []
 
     for spec in HMM_REGISTRY:
         hmm_file = profiles_dir / spec.filename
@@ -261,7 +332,15 @@ def setup_hmm_pipeline(
                     logger.warning(msg)
                 continue
 
-        if not is_hmm_pressed(hmm_file) or force_rebuild:
+        # hmmpress chỉ phục vụ tool CLI của HMMER; không có code nào trong
+        # repo gọi hmmsearch/hmmfetch CLI (mọi thứ qua pyhmmer, đọc thẳng
+        # file .hmm). Thiếu binary thì bỏ qua chỉ mục thay vì exit 1.
+        if shutil.which("hmmpress") is None:
+            logger.warning(
+                "Không tìm thấy 'hmmpress' trong PATH, bỏ qua chỉ mục "
+                f"cho {spec.filename} (pyhmmer không cần)"
+            )
+        elif not is_hmm_pressed(hmm_file) or force_rebuild:
             logger.warning(
                 f"Đang xử lý chỉ mục cho {spec.filename} (force_rebuild={force_rebuild})..."
             )

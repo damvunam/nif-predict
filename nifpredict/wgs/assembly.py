@@ -1,7 +1,7 @@
 # nifpredict/wgs/assembly.py
+import argparse
 import os
 import subprocess
-import argparse
 
 
 def run_unicycler_short(r1_path, r2_path, out_dir, threads=10):

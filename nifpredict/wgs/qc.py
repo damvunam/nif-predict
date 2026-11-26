@@ -1,13 +1,21 @@
 # nifpredict/wgs/qc.py
 import argparse
-import gzip
-import subprocess
-import os
-import json
 import glob
+import gzip
+import json
+import os
+import subprocess
 
 from nifpredict.common import paths
+from nifpredict.common.thresholds import (
+    GATE1_MAX_DUPLICATION,
+    GATE1_MIN_Q30,
+    GATE2_BUSCO_LINEAGE,
+    GATE2_MIN_BUSCO_COMPLETENESS,
+    GATE2_MIN_N50,
+)
 from nifpredict.wgs import contig_stats
+
 
 def peek_read_length(fastq_path, n_reads=100):
     """
@@ -24,7 +32,7 @@ def peek_read_length(fastq_path, n_reads=100):
     if fastq_path.endswith(".gz"):
         handle = gzip.open(fastq_path, "rt")
     else:
-        handle = open(fastq_path, "rt")
+        handle = open(fastq_path)
 
     # 2. Read sequence lines (every 4th line in a fastq record)
     lengths = []
@@ -88,7 +96,7 @@ def run_fastp(r1_path, r2_path, out_dir, sample_name="sample"):
 
 
 # FIX (W16): add evaluate_qc_report returning PASS/FAIL/ERROR dict to separate corrupt/missing report from biological quality failure
-def evaluate_qc_report(report_path, min_q30_rate=0.8, max_duplication_rate=0.2):
+def evaluate_qc_report(report_path, min_q30_rate=GATE1_MIN_Q30, max_duplication_rate=GATE1_MAX_DUPLICATION):
     """Evaluates a fastp JSON report against quality thresholds with PASS/FAIL/ERROR status.
 
     Args:
@@ -144,7 +152,7 @@ def evaluate_qc_report(report_path, min_q30_rate=0.8, max_duplication_rate=0.2):
     }
 
 
-def check_qc_report(report_path, min_q30_rate=0.8, max_duplication_rate=0.2):
+def check_qc_report(report_path, min_q30_rate=GATE1_MIN_Q30, max_duplication_rate=GATE1_MAX_DUPLICATION):
     """
     Checks a fastp JSON report against quality thresholds.
 
@@ -253,7 +261,7 @@ def run_quast(assembly_path, out_dir, threads=10):
     return report_path
 
 
-def run_busco(assembly_path, out_dir, lineage="bacillales_odb10", threads=10):
+def run_busco(assembly_path, out_dir, lineage=GATE2_BUSCO_LINEAGE, threads=10):
     """
     Runs BUSCO to estimate genome completeness against a conserved single-copy gene set.
 
@@ -306,7 +314,7 @@ def run_busco(assembly_path, out_dir, lineage="bacillales_odb10", threads=10):
 
 
 # FIX (W16): add evaluate_assembly_quality returning PASS/FAIL/ERROR dict to distinguish missing/corrupt reports from low N50/BUSCO
-def evaluate_assembly_quality(quast_report_path, busco_summary_path, min_n50=50000, min_busco_completeness=95.0):
+def evaluate_assembly_quality(quast_report_path, busco_summary_path, min_n50=GATE2_MIN_N50, min_busco_completeness=GATE2_MIN_BUSCO_COMPLETENESS):
     """Evaluates QUAST N50 and BUSCO completeness against Gate 2 thresholds with PASS/FAIL/ERROR status.
 
     Args:
@@ -387,7 +395,7 @@ def evaluate_assembly_quality(quast_report_path, busco_summary_path, min_n50=500
     }
 
 
-def check_assembly_quality(quast_report_path, busco_summary_path, min_n50=50000, min_busco_completeness=95.0):
+def check_assembly_quality(quast_report_path, busco_summary_path, min_n50=GATE2_MIN_N50, min_busco_completeness=GATE2_MIN_BUSCO_COMPLETENESS):
     """
     Go/no-go gate for a genome assembly: N50 must reach a minimum floor
     (blocking overly fragmented assemblies) AND BUSCO completeness must be high enough.
@@ -412,8 +420,8 @@ def check_assembly_quality(quast_report_path, busco_summary_path, min_n50=50000,
 
 
 # FIX (W16): add run_assembly_qc_status returning PASS/FAIL/ERROR dict when running QUAST + BUSCO from scratch
-def run_assembly_qc_status(assembly_path, out_dir, lineage="bacillales_odb10",
-                           min_n50=50000, min_busco_completeness=95.0, threads=10):
+def run_assembly_qc_status(assembly_path, out_dir, lineage=GATE2_BUSCO_LINEAGE,
+                           min_n50=GATE2_MIN_N50, min_busco_completeness=GATE2_MIN_BUSCO_COMPLETENESS, threads=10):
     """Orchestrator: runs QUAST + BUSCO on a finished assembly and returns structured Gate 2 status.
 
     Args:
@@ -451,8 +459,8 @@ def run_assembly_qc_status(assembly_path, out_dir, lineage="bacillales_odb10",
     )
 
 
-def run_assembly_qc_gate(assembly_path, out_dir, lineage="bacillales_odb10",
-                          min_n50=50000, min_busco_completeness=95.0, threads=10):
+def run_assembly_qc_gate(assembly_path, out_dir, lineage=GATE2_BUSCO_LINEAGE,
+                          min_n50=GATE2_MIN_N50, min_busco_completeness=GATE2_MIN_BUSCO_COMPLETENESS, threads=10):
     """
     Orchestrator: runs QUAST + BUSCO on a finished assembly, then checks the
     go/no-go gate. Call this right after wgs_assembly.py finishes.

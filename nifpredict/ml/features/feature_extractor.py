@@ -3,7 +3,8 @@ Module: nifpredict.ml.features.feature_extractor
 Description: Production-ready Multi-layered Feature Engineering Matrix.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
+
 import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix, hstack
@@ -35,8 +36,8 @@ class MarkerClusterExtractor:
 
     def __init__(
         self,
-        core_pfams: Optional[Dict[str, str]] = None,
-        aux_pfams: Optional[Dict[str, str]] = None,
+        core_pfams: dict[str, str] | None = None,
+        aux_pfams: dict[str, str] | None = None,
         epsilon: float = 1e-300,
     ) -> None:
         self.core_pfams = core_pfams or {"nifH": "PF00142", "nifD": "PF00148", "nifK": "PF02826"}
@@ -50,10 +51,10 @@ class MarkerClusterExtractor:
         self,
         accession: str,
         df_hits: pd.DataFrame,
-        clusters: List[Dict[str, Any]],
+        clusters: list[dict[str, Any]],
         status: str = "SUCCESS",
-    ) -> Dict[str, Any]:
-        features: Dict[str, Any] = {"accession": accession, "status": status}
+    ) -> dict[str, Any]:
+        features: dict[str, Any] = {"accession": accession, "status": status}
         found_core_count = 0
         total_core_genes = len(self.core_pfams)
 
@@ -150,10 +151,10 @@ class MarkerClusterExtractor:
 class GenomeFeatureExtractor(BaseEstimator, TransformerMixin):
     def __init__(
         self,
-        config: Optional[AppConfig] = None,
+        config: AppConfig | None = None,
         max_pfam_features: int = 1000,
-        taxonomic_cols: Optional[List[str]] = None,
-        numeric_meta_cols: Optional[List[str]] = None,
+        taxonomic_cols: list[str] | None = None,
+        numeric_meta_cols: list[str] | None = None,
         epsilon: float = 1e-300,
         min_taxon_freq: float = 0.01,
     ) -> None:
@@ -187,10 +188,10 @@ class GenomeFeatureExtractor(BaseEstimator, TransformerMixin):
         )
         self.num_scaler = StandardScaler()
 
-        self.feature_names_: List[str] = []
+        self.feature_names_: list[str] = []
         self.is_fitted_: bool = False
 
-    def _extract_layer1_df(self, raw_records: List[Dict[str, Any]]) -> pd.DataFrame:
+    def _extract_layer1_df(self, raw_records: list[dict[str, Any]]) -> pd.DataFrame:
         rows = [
             self.marker_extractor.extract_single_record(
                 rec["accession"],
@@ -203,7 +204,7 @@ class GenomeFeatureExtractor(BaseEstimator, TransformerMixin):
         return pd.DataFrame(rows)
 
     def fit(
-        self, raw_records: List[Dict[str, Any]], y: Optional[Any] = None
+        self, raw_records: list[dict[str, Any]], y: Any | None = None
     ) -> "GenomeFeatureExtractor":
         pfam_texts = [" ".join(rec.get("pfam_domains", [])) for rec in raw_records]
         if any(pfam_texts):
@@ -231,8 +232,8 @@ class GenomeFeatureExtractor(BaseEstimator, TransformerMixin):
         return self
 
     def transform(
-        self, raw_records: List[Dict[str, Any]], return_sparse: bool = False
-    ) -> Union[pd.DataFrame, csr_matrix]:
+        self, raw_records: list[dict[str, Any]], return_sparse: bool = False
+    ) -> pd.DataFrame | csr_matrix:
         if not self.is_fitted_:
             raise RuntimeError("Extractor chưa được fit! Vui lòng gọi .fit() trước.")
 
@@ -285,8 +286,8 @@ class GenomeFeatureExtractor(BaseEstimator, TransformerMixin):
 
     def fit_transform(
         self,
-        raw_records: List[Dict[str, Any]],
-        y: Optional[Any] = None,
+        raw_records: list[dict[str, Any]],
+        y: Any | None = None,
         return_sparse: bool = False,
-    ) -> Union[pd.DataFrame, csr_matrix]:
+    ) -> pd.DataFrame | csr_matrix:
         return self.fit(raw_records, y).transform(raw_records, return_sparse=return_sparse)

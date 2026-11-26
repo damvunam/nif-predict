@@ -7,7 +7,11 @@ from pathlib import Path
 import pytest
 
 from nifpredict.common import paths
-from nifpredict.nif.check_nif import is_nif_present_assembly, load_gene_map, summarize_tblastn
+from nifpredict.nif.check_nif import (
+    is_nif_present_assembly,
+    load_gene_map,
+    summarize_tblastn,
+)
 
 # Real 171-protein reference set (W4e, MANIFEST row NIF_REF_171, md5 e4a328f9...). Local only (data/public is git-ignored).
 REAL_REF = paths.NIF_REF_FAA

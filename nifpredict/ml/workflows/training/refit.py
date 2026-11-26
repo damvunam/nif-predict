@@ -16,7 +16,6 @@ from nifpredict.ml.models import (
     verify_prediction_round_trip,
 )
 from nifpredict.ml.models.persistence import LoadedModelArtifact
-
 from nifpredict.ml.workflows.training.artifacts import write_json
 
 MODEL_METADATA_SCHEMA_VERSION = "1.0"

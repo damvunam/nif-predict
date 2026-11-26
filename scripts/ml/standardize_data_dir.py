@@ -17,7 +17,6 @@ import hashlib
 import re
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from nifpredict.common import paths
 from nifpredict.common.config import AppConfig, load_config
@@ -40,7 +39,7 @@ def compute_md5(file_path: Path, chunk_size: int = 65536) -> str:
     return hasher.hexdigest()
 
 
-def parse_accession(file_path: Path) -> Optional[str]:
+def parse_accession(file_path: Path) -> str | None:
     """Trích xuất mã Accession (GCF_xxx / GCA_xxx) từ tên tệp hoặc đường dẫn."""
     match = ACCESSION_REGEX.search(file_path.name)
     if match:
@@ -70,7 +69,7 @@ class DataDirectoryStandardizer:
         self.config: AppConfig = load_config(self.config_path, auto_create_dirs=True)
         self._init_paths()
 
-        self.stats: Dict[str, int] = {
+        self.stats: dict[str, int] = {
             "processed": 0,
             "moved": 0,
             "duplicates_removed": 0,
@@ -86,7 +85,7 @@ class DataDirectoryStandardizer:
         self.target_zip_dir = self.config.paths.raw_zip_dir
         self.interim_annotation_dir = self.config.paths.annotation_dir
 
-        self.external_source_dirs: List[Path] = [
+        self.external_source_dirs: list[Path] = [
             paths.ML_LEGACY_RAW_GENOMES,
             paths.ML_LEGACY_RAW_METADATA,
             paths.ML_RAW_ZIPS,
@@ -100,13 +99,13 @@ class DataDirectoryStandardizer:
             self.target_zip_dir.mkdir(parents=True, exist_ok=True)
             self.interim_annotation_dir.mkdir(parents=True, exist_ok=True)
 
-    def extract_accession(self, file_path: Path) -> Optional[str]:
+    def extract_accession(self, file_path: Path) -> str | None:
         """Extract NCBI accession (GCF_/GCA_) using parse_accession helper."""
         return parse_accession(file_path)
 
     def classify_and_resolve_target(
         self, file_path: Path
-    ) -> Optional[Tuple[str, Path]]:
+    ) -> tuple[str, Path] | None:
         """
         Classify file type and determine standard target filename and directory.
         Handles both uncompressed and gzipped (.gz) files.
@@ -253,7 +252,7 @@ class DataDirectoryStandardizer:
             logger.warning(f"Thư mục raw genomes không tồn tại: {self.target_genomes_dir}")
             return
 
-        grouped_files: Dict[str, Dict[str, Path]] = {}
+        grouped_files: dict[str, dict[str, Path]] = {}
 
         for file_path in self.target_genomes_dir.iterdir():
             if not file_path.is_file():

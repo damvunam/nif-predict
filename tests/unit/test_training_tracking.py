@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from nifpredict.common import paths
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -12,6 +11,7 @@ from typing import Any
 import pandas as pd
 import pytest
 
+from nifpredict.common import paths
 from nifpredict.ml.evaluation import GroupedCVConfig
 from nifpredict.ml.workflows.training import (
     MLflowTrackingConfig,

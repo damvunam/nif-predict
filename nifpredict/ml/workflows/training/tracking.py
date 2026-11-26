@@ -11,7 +11,10 @@ from typing import Any
 
 import pandas as pd
 
-from nifpredict.ml.workflows.training.service import TrainingWorkflowConfig, TrainingWorkflowResult
+from nifpredict.ml.workflows.training.service import (
+    TrainingWorkflowConfig,
+    TrainingWorkflowResult,
+)
 
 DEFAULT_EXPERIMENT_NAME = "nifpredict-training"
 

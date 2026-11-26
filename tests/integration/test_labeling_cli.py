@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from nifpredict.common import paths
 import json
 import os
 import subprocess
@@ -10,6 +9,8 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+
+from nifpredict.common import paths
 
 ROOT = paths.REPO_ROOT
 FIXTURES = paths.FIXTURES_DIR

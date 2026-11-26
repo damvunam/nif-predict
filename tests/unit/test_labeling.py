@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from nifpredict.common import paths
-from pathlib import Path
-
 import pandas as pd
 import pytest
 
 import nifpredict.ml.data.labeling as legacy_labeling
 import nifpredict.ml.labeling as new_labeling
+from nifpredict.common import paths
 from nifpredict.ml.labeling import (
     MANIFEST_COLUMNS,
     LabelingValidationError,

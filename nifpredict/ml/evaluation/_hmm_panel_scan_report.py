@@ -9,7 +9,11 @@ from dataclasses import asdict
 from pathlib import Path
 
 from nifpredict.ml.evaluation._hmm_panel_files import sha256_file
-from nifpredict.ml.evaluation._hmm_panel_scan_types import HIT_COLUMNS, FastaScanResult, PanelScanHit
+from nifpredict.ml.evaluation._hmm_panel_scan_types import (
+    HIT_COLUMNS,
+    FastaScanResult,
+    PanelScanHit,
+)
 from nifpredict.ml.evaluation._hmm_panel_types import HMMPanelSpec
 
 

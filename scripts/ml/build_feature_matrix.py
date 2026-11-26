@@ -9,9 +9,9 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from nifpredict.common import paths
-from nifpredict.ml.features.cluster_filter import ClusterFilter
 from nifpredict.common.config import load_config
 from nifpredict.common.logger import get_logger
+from nifpredict.ml.features.cluster_filter import ClusterFilter
 from nifpredict.ml.workflows.feature_matrix import (
     PanelFeatureInput,
     build_feature_matrix,
@@ -25,7 +25,6 @@ from nifpredict.ml.workflows.feature_matrix import (
     write_run_metadata,
 )
 from nifpredict.ml.workflows.feature_matrix.output import get_feature_names
-
 
 LOGGER = get_logger("nifpredict.scripts.build_feature_matrix")
 PROJECT_ROOT = paths.REPO_ROOT

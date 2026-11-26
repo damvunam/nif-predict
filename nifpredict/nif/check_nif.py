@@ -1,8 +1,8 @@
 # nifpredict/nif/check_nif.py — run from the repo root: python -m nifpredict.nif.check_nif -s SAMPLE [-a ASSEMBLY]
-import os
-import csv
 import argparse
+import csv
 import hashlib
+import os
 import subprocess
 import sys
 import traceback
@@ -10,6 +10,17 @@ from datetime import datetime
 from pathlib import Path
 
 from nifpredict.common import paths
+from nifpredict.common.thresholds import (
+    NIF_DIAMOND_EVALUE,
+    NIF_MAX_GAP,
+    NIF_MIN_ALN_LEN,
+    NIF_MIN_COVERAGE,
+    NIF_MIN_OVERLAP,
+    NIF_MIN_PIDENT_ASSEMBLY,
+    NIF_MIN_PIDENT_READS,
+    NIF_MIN_READS,
+    NIF_TBLASTN_EVALUE,
+)
 
 NIF_GENES = ["nifH", "nifD", "nifK"]
 
@@ -103,7 +114,7 @@ def run_tblastn(ref_path, assembly_path, out_dir, threads, log_path):
     cmd = [
         "tblastn", "-query", ref_path, "-db", db_prefix,
         "-outfmt", "6 qseqid sseqid pident length qlen evalue bitscore sstart send qstart qend",
-        "-evalue", "1e-5",
+        "-evalue", NIF_TBLASTN_EVALUE,
         "-max_target_seqs", "5",
         "-num_threads", str(threads),
         "-out", hits_path,
@@ -270,7 +281,7 @@ def run_diamond_reads(ref_path, reads_paths, out_dir, threads, log_path):
             "diamond", "blastx", "-d", db_prefix, "-q", reads_path,
             "-o", part_path,
             "--outfmt", "6", "qseqid", "sseqid", "pident", "length", "evalue", "bitscore",
-            "--evalue", "1e-5",
+            "--evalue", NIF_DIAMOND_EVALUE,
             "--max-target-seqs", "1",
             "--threads", str(threads),
         ]
@@ -287,8 +298,8 @@ def run_diamond_reads(ref_path, reads_paths, out_dir, threads, log_path):
 
 
 def summarize_reads(hits_path, gene_map,
-                    min_pident=60.0,   # true Nif homologs; paralogs (BchL/ChlL, BchN/B) sit ~25-40%
-                    min_aln_len=40):    # 150bp read -> max 50 aa, so 40 aa = near full-length alignment
+                    min_pident=NIF_MIN_PIDENT_READS,   # true Nif homologs; paralogs (BchL/ChlL, BchN/B) sit ~25-40%
+                    min_aln_len=NIF_MIN_ALN_LEN):    # 150bp read -> max 50 aa, so 40 aa = near full-length alignment
     """
     Counts reads per gene that pass identity/length filters.
 
@@ -317,9 +328,9 @@ def summarize_reads(hits_path, gene_map,
 
 
 def is_nif_present_assembly(best,
-                            min_pident=50.0,     # NifH/D/K vs nearest Swiss-Prot ortholog usually >60%
-                            min_coverage=0.7,    # allow partial genes at contig edges
-                            max_gap=20000):      # nifHDK sit in one operon, a few kb apart
+                            min_pident=NIF_MIN_PIDENT_ASSEMBLY,     # NifH/D/K vs nearest Swiss-Prot ortholog usually >60%
+                            min_coverage=NIF_MIN_COVERAGE,    # allow partial genes at contig edges
+                            max_gap=NIF_MAX_GAP):      # nifHDK sit in one operon, a few kb apart
     """
     Decides presence from assembly hits.
 
@@ -347,7 +358,7 @@ def is_nif_present_assembly(best,
     # are two different loci, not the same gene matched twice.
     for g1, g2 in [("nifH", "nifD"), ("nifH", "nifK"), ("nifD", "nifK")]:
         a, b = best[g1], best[g2]
-        min_overlap = 50  # neighbouring genes in an operon can share a few bp at start/stop codons
+        min_overlap = NIF_MIN_OVERLAP  # neighbouring genes in an operon can share a few bp at start/stop codons
         if a["contig"] == b["contig"] and a["start"] + min_overlap < b["end"] and b["start"] + min_overlap < a["end"]:
             reasons.append(f"{g1} and {g2} best hits overlap on {a['contig']} - same locus counted twice")
             return "PARTIAL - check manually", reasons
@@ -363,7 +374,7 @@ def is_nif_present_assembly(best,
 
 
 def is_nif_present_reads(summary,
-                         min_reads=20):  # a real single-copy gene at ~100x gives hundreds of reads
+                         min_reads=NIF_MIN_READS):  # a real single-copy gene at ~100x gives hundreds of reads
     """Decides presence from read hits. Returns (verdict str, list of reason strings)."""
     reasons = []
     passed = []

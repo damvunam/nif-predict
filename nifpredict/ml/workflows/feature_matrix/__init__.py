@@ -1,8 +1,16 @@
 """Feature matrix workflow components."""
 
 from nifpredict.ml.workflows.feature_matrix.extraction import extract_raw_records
-from nifpredict.ml.workflows.feature_matrix.inputs import index_genome_paths, load_accessions, prepare_input_files
-from nifpredict.ml.workflows.feature_matrix.output import build_feature_matrix, write_feature_matrix, write_run_metadata
+from nifpredict.ml.workflows.feature_matrix.inputs import (
+    index_genome_paths,
+    load_accessions,
+    prepare_input_files,
+)
+from nifpredict.ml.workflows.feature_matrix.output import (
+    build_feature_matrix,
+    write_feature_matrix,
+    write_run_metadata,
+)
 from nifpredict.ml.workflows.feature_matrix.panel_hits import (
     PanelFeatureInput,
     PanelFeatureInputError,

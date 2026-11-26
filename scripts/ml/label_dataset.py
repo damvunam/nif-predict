@@ -9,12 +9,12 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from nifpredict.common import paths
+from nifpredict.common.logger import setup_logger_from_config
 from nifpredict.ml.labeling import (
     DEFAULT_EVIDENCE_SOURCES,
     LabelingValidationError,
     run_labeling_pipeline,
 )
-from nifpredict.common.logger import setup_logger_from_config
 
 PROJECT_ROOT = paths.REPO_ROOT
 DEFAULT_FEATURES = paths.ML_PROCESSED / "feature_matrix.parquet"

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from nifpredict.common import paths
 import hashlib
 import json
 import os
@@ -11,6 +10,8 @@ import sys
 from pathlib import Path
 
 import yaml
+
+from nifpredict.common import paths
 
 ROOT = paths.REPO_ROOT
 SCRIPT = paths.ML_SCRIPTS_DIR / "audit_hmm_panel.py"

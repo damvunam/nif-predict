@@ -7,11 +7,11 @@ Description: Hệ thống ghi log tập trung cho dự án NifPredict.
 """
 
 import logging
-from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 import os
 import sys
+from logging.handlers import QueueHandler, RotatingFileHandler
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 # Format chuẩn hóa chứa đầy đủ ngữ cảnh cho Debug & Multiprocessing
 DEFAULT_LOG_FORMAT = (
@@ -41,8 +41,8 @@ class ColoredConsoleFormatter(logging.Formatter):
 
 def setup_logger_from_config(
     name: str = "nifpredict",
-    log_file: Optional[Union[Path, str]] = None,
-    level: Optional[str] = None,
+    log_file: Path | str | None = None,
+    level: str | None = None,
     max_bytes: int = 10 * 1024 * 1024,  # Mặc định 10 MB per file
     backup_count: int = 5,              # Tối đa 5 file backup (Tổng ~50MB)
     propagate: bool = False,
@@ -121,7 +121,7 @@ logger = get_logger("nifpredict")
 
 def setup_worker_queue_logger(
     queue: Any,
-    level: Optional[str] = None
+    level: str | None = None
 ) -> logging.Logger:
     """Cấu hình logger cho các Worker process trong môi trường Multiprocessing.
     Gửi toàn bộ log qua QueueHandler để Main Process xử lý bằng QueueListener,

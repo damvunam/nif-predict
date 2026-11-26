@@ -1,8 +1,9 @@
 # nifpredict/wgs/annotation.py
-import os
-import glob
-import subprocess
 import argparse
+import glob
+import os
+import subprocess
+
 
 def run_bakta(assembly_path, out_dir, db_path, threads=10):
     """

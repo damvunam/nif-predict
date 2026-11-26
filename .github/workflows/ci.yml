@@ -1,0 +1,36 @@
+# CI: lint (ruff) + unit tests on every push / PR to main.
+#
+# What runs here, and what does not (yet):
+# - ruff check: real gate. E501 (line too long) is ignored in
+#   pyproject.toml: ~480 long lines, not a lint gate until reformatted.
+# - pytest tests/unit: real gate. Integration tests are NOT run here:
+#   they need DVC data / external tools that CI does not install.
+# - mypy is NOT run here: strict=true gave 227 errors, non-strict 55
+#   (mostly missing stubs + 16 real errors). See pyproject [tool.mypy].
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package + dev deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Ruff
+        run: ruff check nifpredict scripts tests
+      - name: Pytest (unit only)
+        run: python -m pytest tests/unit -p no:cacheprovider -o addopts="-ra"

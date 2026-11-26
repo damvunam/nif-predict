@@ -6,13 +6,13 @@ Production-grade Pytest Integration Test Suite for HMM Annotation Pipeline.
 import time
 import tracemalloc
 from pathlib import Path
-from typing import Dict, List, Set, TypedDict
+from typing import TypedDict
 
 import pandas as pd
 import pytest
 
-from nifpredict.ml.features import HMMAnnotator
 from nifpredict.common.config import load_config
+from nifpredict.ml.features import HMMAnnotator
 
 
 class GeneProfileConfig(TypedDict):
@@ -20,7 +20,7 @@ class GeneProfileConfig(TypedDict):
     min_bitscore: float
 
 
-HMM_GENE_MAPPING: Dict[str, GeneProfileConfig] = {
+HMM_GENE_MAPPING: dict[str, GeneProfileConfig] = {
     "PF00142": {"gene_symbol": "nifH", "min_bitscore": 150.0},
     "PF00148": {"gene_symbol": "nifD", "min_bitscore": 200.0},
     "PF00149": {"gene_symbol": "nifK", "min_bitscore": 180.0},
@@ -29,8 +29,8 @@ HMM_GENE_MAPPING: Dict[str, GeneProfileConfig] = {
     "nifk": {"gene_symbol": "nifK", "min_bitscore": 180.0},
 }
 
-REQUIRED_CORE_GENES: Set[str] = {"nifH", "nifD", "nifK"}
-EXCLUDED_HMM_FILES: Set[str] = {"pfam-a.hmm", "pfam.hmm", "tigrfams.hmm"}
+REQUIRED_CORE_GENES: set[str] = {"nifH", "nifD", "nifK"}
+EXCLUDED_HMM_FILES: set[str] = {"pfam-a.hmm", "pfam.hmm", "tigrfams.hmm"}
 
 
 @pytest.fixture(scope="module")
@@ -57,14 +57,14 @@ def test_hmm_annotation_positive_control(config, positive_control_fasta):
     all_hmm_files = list(profiles_dir.glob("*.hmm"))
 
     # Bỏ qua Pfam-A.hmm để tối ưu tốc độ < 60s
-    hmm_files: List[Path] = [
+    hmm_files: list[Path] = [
         f for f in all_hmm_files if f.name.lower() not in EXCLUDED_HMM_FILES
     ]
 
     assert len(hmm_files) > 0, f"Không tìm thấy HMM profile hợp lệ nào tại: {profiles_dir}"
 
     annotator = HMMAnnotator(config=config)
-    all_hits: List[pd.DataFrame] = []
+    all_hits: list[pd.DataFrame] = []
 
     tracemalloc.start()
     start_time = time.perf_counter()
@@ -116,7 +116,7 @@ def test_hmm_annotation_positive_control(config, positive_control_fasta):
     df_final.to_csv(summary_file, sep="\t", index=False)
 
     # Biological Core Assertions
-    detected_genes: Set[str] = set(df_final["target_gene"].unique())
+    detected_genes: set[str] = set(df_final["target_gene"].unique())
     missing_genes = REQUIRED_CORE_GENES - detected_genes
 
     assert not missing_genes, (

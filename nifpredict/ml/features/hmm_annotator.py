@@ -6,7 +6,7 @@ import os
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import pandas as pd
 import pyhmmer
@@ -15,7 +15,6 @@ from pyhmmer.easel import Alphabet, DigitalSequenceBlock, SequenceFile
 from pyhmmer.plan7 import HMMFile
 
 from nifpredict.common.config import AppConfig, load_config
-
 
 logger = logging.getLogger("nifpredict.ml.features.hmm_annotator")
 
@@ -80,7 +79,7 @@ class HMMAnnotator:
 
     def __init__(
         self,
-        config: Optional[Union[AppConfig, Dict[str, Any]]] = None,
+        config: AppConfig | dict[str, Any] | None = None,
         cpus: int = 0,
     ) -> None:
         if cpus < 0:
@@ -184,8 +183,8 @@ class HMMAnnotator:
 
     def _resolve_cross_family_overlaps(
         self,
-        hits: List[DomainHit],
-    ) -> List[DomainHit]:
+        hits: list[DomainHit],
+    ) -> list[DomainHit]:
         """Keep the best-scoring domain when domain envelopes overlap."""
         if not hits:
             return []
@@ -199,7 +198,7 @@ class HMMAnnotator:
             ),
             reverse=True,
         )
-        selected_hits: List[DomainHit] = []
+        selected_hits: list[DomainHit] = []
 
         for candidate in sorted_hits:
             candidate_start = min(candidate.env_from, candidate.env_to)
@@ -237,12 +236,12 @@ class HMMAnnotator:
 
     def _search(
         self,
-        queries: List[Any],
+        queries: list[Any],
         sequences: DigitalSequenceBlock,
         use_trusted_cutoffs: bool,
-    ) -> List[Any]:
+    ) -> list[Any]:
         """Run PyHMMER and consume the lazy iterator inside error handling."""
-        options: Dict[str, Any] = {}
+        options: dict[str, Any] = {}
         if use_trusted_cutoffs:
             options["bit_cutoffs"] = "trusted"
         else:
@@ -263,7 +262,7 @@ class HMMAnnotator:
         self,
         protein_fasta: Path,
         hmm_profile: Path,
-    ) -> List[DomainHit]:
+    ) -> list[DomainHit]:
         """Annotate one protein FASTA file with the supplied HMM profile(s)."""
         protein_fasta = Path(protein_fasta)
         hmm_profile = Path(hmm_profile)
@@ -278,7 +277,7 @@ class HMMAnnotator:
             )
 
         start_time = time.perf_counter()
-        raw_hits_by_target: Dict[str, List[DomainHit]] = {}
+        raw_hits_by_target: dict[str, list[DomainHit]] = {}
 
         try:
             with SequenceFile(
@@ -378,7 +377,7 @@ class HMMAnnotator:
                             )
                         )
 
-            filtered_hits: List[DomainHit] = []
+            filtered_hits: list[DomainHit] = []
             for target_hits in raw_hits_by_target.values():
                 filtered_hits.extend(
                     self._resolve_cross_family_overlaps(target_hits)

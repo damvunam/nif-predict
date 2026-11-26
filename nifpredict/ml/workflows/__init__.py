@@ -2,12 +2,12 @@
 
 from nifpredict.ml.workflows.training import (
     DEFAULT_EXPERIMENT_NAME,
-    MLflowTrackingConfig,
-    MLflowTrackingResult,
     MODEL_METADATA_SCHEMA_VERSION,
     REFIT_ARTIFACT_FILENAMES,
     RUN_ARTIFACT_FILENAMES,
     TRAINING_RUN_SCHEMA_VERSION,
+    MLflowTrackingConfig,
+    MLflowTrackingResult,
     RefitArtifactResult,
     TrainingArtifactError,
     TrainingWorkflowConfig,

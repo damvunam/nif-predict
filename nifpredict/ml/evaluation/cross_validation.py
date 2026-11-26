@@ -10,6 +10,12 @@ import pandas as pd
 from numpy.typing import NDArray
 from sklearn.model_selection import StratifiedGroupKFold
 
+from nifpredict.ml.evaluation.leakage import (
+    GroupedDatasetSummary,
+    validate_fold_manifest,
+    validate_fold_split,
+    validate_grouped_cv_input,
+)
 from nifpredict.ml.models.metrics import (
     ALL_METRICS,
     aggregate_cross_validation_metrics,
@@ -23,13 +29,6 @@ from nifpredict.ml.models.trainer import (
     LABEL_MAPPING,
     prepare_training_data,
     train_classifier,
-)
-
-from nifpredict.ml.evaluation.leakage import (
-    GroupedDatasetSummary,
-    validate_fold_manifest,
-    validate_fold_split,
-    validate_grouped_cv_input,
 )
 
 DEFAULT_MODELS = ("logistic_regression", "random_forest", "svm")

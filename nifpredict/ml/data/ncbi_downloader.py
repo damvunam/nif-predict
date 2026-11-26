@@ -6,7 +6,7 @@ import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -33,9 +33,9 @@ class GenomeMetadata:
     tax_id: int = 0
     assembly_level: str = "Unknown"
     download_status: str = "PENDING"  # PENDING, SUCCESS, FAILED, NOT_FOUND, CORRUPTED, INVALID_OUTPUT
-    extracted_files: Dict[str, str] = field(default_factory=dict)
+    extracted_files: dict[str, str] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -70,7 +70,7 @@ class NCBIResolver:
         self.rate_limiter = rate_limiter
         self.logger = logger or get_logger("nifpredict.ml.data.resolver")
 
-    def resolve_taxon_to_accessions(self, taxon: str, limit: int = 10) -> List[str]:
+    def resolve_taxon_to_accessions(self, taxon: str, limit: int = 10) -> list[str]:
         """Truy vấn NCBI Datasets API để lấy danh sách Accession từ TaxID hoặc tên sinh vật."""
         if taxon.startswith(("GCF_", "GCA_")):
             return [taxon.strip()]
@@ -96,12 +96,12 @@ class NCBIResolver:
 class NCBIDownloader:
     """Layer 2: Downloader - Tải Zip Package từ NCBI với Retry, Rate Limiting và Atomic Writes."""
 
-    NON_RETRYABLE_STATUS_CODES: Set[int] = {400, 401, 403, 404, 410}
+    NON_RETRYABLE_STATUS_CODES: set[int] = {400, 401, 403, 404, 410}
 
     def __init__(
         self,
-        config: Optional[AppConfig] = None,
-        logger: Optional[logging.Logger] = None,
+        config: AppConfig | None = None,
+        logger: logging.Logger | None = None,
     ) -> None:
         self.config = config or load_config()
         self.logger = logger or get_logger("nifpredict.ml.data.downloader")
@@ -142,7 +142,7 @@ class NCBIDownloader:
             self.logger.debug(f"Xác minh tệp ZIP thất bại cho {zip_path.name}: {e}")
             return False
 
-    def download_genome_zip(self, accession: str) -> Optional[Path]:
+    def download_genome_zip(self, accession: str) -> Path | None:
         """Tải Zip Package cho Accession với cơ chế Atomic Write, Rate Limiting và Selective Retry."""
         output_zip_path = self.raw_zip_dir / f"{accession}.zip"
 
@@ -234,10 +234,10 @@ class NCBIExtractor:
 
     def __init__(
         self,
-        raw_genomes_dir: Optional[Union[Path, str]] = None,
-        raw_metadata_dir: Optional[Union[Path, str]] = None,
-        config: Optional[AppConfig] = None,
-        logger: Optional[logging.Logger] = None,
+        raw_genomes_dir: Path | str | None = None,
+        raw_metadata_dir: Path | str | None = None,
+        config: AppConfig | None = None,
+        logger: logging.Logger | None = None,
     ) -> None:
         self.config = config or load_config()
         self.logger = logger or get_logger("nifpredict.ml.data.extractor")
@@ -254,7 +254,7 @@ class NCBIExtractor:
 
     def extract_package(
         self, zip_path: Path, accession: str
-    ) -> Optional[GenomeMetadata]:
+    ) -> GenomeMetadata | None:
         """Duyệt archive ZIP, ghép các contigs/plasmids tách rời và validate kích thước file xuất."""
         if not zip_path or not zip_path.exists():
             return GenomeMetadata(accession=accession, download_status="FAILED")
@@ -269,7 +269,7 @@ class NCBIExtractor:
                 target.unlink()
 
         metadata = None
-        extracted_paths: Dict[str, str] = {}
+        extracted_paths: dict[str, str] = {}
 
         try:
             with zipfile.ZipFile(zip_path, "r") as zf:
@@ -350,8 +350,8 @@ class NCBIBatchPipeline:
 
     def __init__(
         self,
-        config: Optional[AppConfig] = None,
-        logger: Optional[logging.Logger] = None,
+        config: AppConfig | None = None,
+        logger: logging.Logger | None = None,
     ) -> None:
         self.config = config or load_config()
         self.logger = logger or get_logger("nifpredict.ml.data.pipeline")
@@ -359,14 +359,14 @@ class NCBIBatchPipeline:
         self.downloader = NCBIDownloader(config=self.config, logger=self.logger)
         self.extractor = NCBIExtractor(config=self.config, logger=self.logger)
 
-    def _load_accessions(self, source: Union[str, Path, List[str]]) -> List[str]:
+    def _load_accessions(self, source: str | Path | list[str]) -> list[str]:
         """Đọc danh sách accession ID từ tệp text hoặc Python List."""
         if isinstance(source, (str, Path)):
             file_path = Path(source)
             if not file_path.exists():
                 self.logger.error(f"Tệp danh sách accession không tồn tại: {file_path}")
                 return []
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 return [
                     line.strip()
                     for line in f
@@ -386,9 +386,9 @@ class NCBIBatchPipeline:
 
     def run_batch(
         self,
-        source: Union[str, Path, List[str]],
+        source: str | Path | list[str],
         max_workers: int = 4,
-    ) -> List[GenomeMetadata]:
+    ) -> list[GenomeMetadata]:
         """Khởi chạy pipeline tải hàng loạt với ThreadPoolExecutor."""
         accessions = self._load_accessions(source)
         if not accessions:
@@ -398,7 +398,7 @@ class NCBIBatchPipeline:
         self.logger.info(
             f"Bắt đầu pipeline cho {len(accessions)} accessions ({max_workers} threads)..."
         )
-        results: List[GenomeMetadata] = []
+        results: list[GenomeMetadata] = []
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_acc = {

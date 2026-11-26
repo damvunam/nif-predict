@@ -12,9 +12,13 @@
 # S0 lives in notes/muse/mu3_S0/nifwgs.lock.yml (gitignored). Pinning here is by
 # version only (no build string), so the solver may pick a newer build.
 #
-# Note: `pip install -e .` downgrades conda numpy 2.3.5 -> 1.26.4 and
-# pandas 3.1.0 -> 3.0.6 to satisfy pyproject (numpy>=1.24.0,<2.0.0).
-# That is a pip-side effect in the env, not a change to this file.
+# Note: numpy is pinned to 1.26.* in the conda deps below to match
+# pyproject (numpy>=1.24.0,<2.0.0, kept <2 to avoid an ABI break with
+# biopython). Before this pin, conda installed numpy 2.3.5 and `pip
+# install -e .` silently downgraded it to 1.26.4, leaving conda metadata
+# and the real env out of sync. pip may still resolve pandas to 3.0.6
+# (pyproject allows pandas>=2.0.0; some resolver constraint caps it
+# below 3.1.0) - that is a pip-side resolution, not a conda pin.
 # pyhmmer / tqdm are NOT listed here: they come from pyproject.toml via the
 # `pip: -e .[dev]` entry below. [dev] is required: pyproject.toml sets
 # pytest addopts `--cov=nifpredict`, so a bare `pytest` fails with
@@ -25,6 +29,8 @@ channels:
   - bioconda
 dependencies:
   - python=3.12
+  # numpy 1.26.* matches pyproject numpy<2; stops pip downgrading conda numpy 2.x
+  - numpy=1.26.*
   - pip
   - pytest=9.2.0
   - fastp=1.4.0

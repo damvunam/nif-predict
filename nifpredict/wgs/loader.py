@@ -1,7 +1,8 @@
 # nifpredict/wgs/loader.py
 import argparse
-import os
 import glob
+import os
+
 
 def find_raw_reads(data_dir, sample_name):
     """

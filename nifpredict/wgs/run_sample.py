@@ -12,18 +12,22 @@ import subprocess
 import sys
 
 from nifpredict.common import paths
+from nifpredict.common.thresholds import (
+    GATE2_BUSCO_LINEAGE,
+    GATE2_MIN_BUSCO_COMPLETENESS,
+    GATE2_MIN_N50,
+    IDENTITY_MIN_ANI,
+    LONG_READ_MIN_LENGTH,
+)
 from nifpredict.wgs import contig_stats
 from nifpredict.wgs.assembly import assemble_genome
 from nifpredict.wgs.loader import find_raw_reads
 from nifpredict.wgs.qc import (
-    check_assembly_quality,
-    check_qc_report,
     evaluate_assembly_quality,
     evaluate_qc_report,
     get_fasta_total_length,
     get_read_coverage,
     peek_read_length,
-    run_assembly_qc_gate,
     run_assembly_qc_status,
     run_fastp,
 )
@@ -37,7 +41,7 @@ def _read_boot_id() -> str:
         str: Stripped boot ID string, or "" if unavailable or unreadable.
     """
     try:
-        with open("/proc/sys/kernel/random/boot_id", "r", encoding="utf-8") as f:
+        with open("/proc/sys/kernel/random/boot_id", encoding="utf-8") as f:
             return f.read().strip()
     except OSError:
         return ""
@@ -156,7 +160,7 @@ def acquire_run_lock(sample_root, argv) -> dict:
 
     # 2. Lock already exists: inspect and validate existing lock file
     try:
-        with open(lock_path, "r", encoding="utf-8") as f:
+        with open(lock_path, encoding="utf-8") as f:
             raw_content = f.read()
     except OSError as e:
         reason = f"cannot read {lock_path}: {e}"
@@ -237,7 +241,7 @@ def release_run_lock(lock_path) -> bool:
         bool: True if the lock was owned by this process and removed, False otherwise.
     """
     try:
-        with open(lock_path, "r", encoding="utf-8") as f:
+        with open(lock_path, encoding="utf-8") as f:
             parsed = _parse_lock_text(f.read())
         lock_pid = int(parsed.get("pid", ""))
         lock_host = parsed.get("hostname", "")
@@ -307,11 +311,6 @@ def get_sample_raw_reads(data_dir, sample_name):
         tuple: (r1_path, r2_path) ordered as mate 1 then mate 2, or (None, None) if not found,
                count != 2, or R1/R2 mate numbers cannot be unambiguously determined.
     """
-    # FIX: do not swallow exceptions or guess return types; find_raw_reads returns sorted list or None
-    # try:
-    #     res = find_raw_reads(data_dir, sample_name)
-    # except Exception:
-    #     return None, None, None
     found_files = find_raw_reads(data_dir, sample_name)
     if found_files is None:
         return None, None
@@ -325,16 +324,10 @@ def get_sample_raw_reads(data_dir, sample_name):
         else:
             print(f"Warning: ignoring {file_path} (does not match sample name {sample_name})")
 
-    # FIX: short-read branch requires exactly 2 files after filtering
-    # if len(found_files) != 2:
-    #     print(f"Error: expected 2 fastq files for {sample_name}, found {len(found_files)}: {found_files}")
-    #     return None, None
     if len(matched_files) != 2:
         print(f"Error: expected 2 fastq files for {sample_name}, found {len(matched_files)}: {matched_files}")
         return None, None
 
-    # FIX (W14): assign R1/R2 by parsed mate number instead of lexicographic sort order
-    # return matched_files[0], matched_files[1]
     mate_0 = get_mate_number(matched_files[0], sample_name)
     mate_1 = get_mate_number(matched_files[1], sample_name)
     if mate_0 is None or mate_1 is None or mate_0 == mate_1:
@@ -361,15 +354,12 @@ def determine_platform(platform, r1_path):
 
     read_len = peek_read_length(r1_path)
     # FIX: stop with Error if peek_read_length returns None or if reads >= 300 bp (long reads unsupported)
-    # if read_len and read_len < 300:
-    #     return "short"
-    # return "long"
     if read_len is None:
         print(f"Error: could not determine read length from {r1_path}")
         return None
 
-    # Threshold 300 bp distinguishes standard Illumina short reads from long reads
-    if read_len >= 300:
+    # Threshold distinguishes standard Illumina short reads from long reads
+    if read_len >= LONG_READ_MIN_LENGTH:
         print("Error: long reads detected, not supported by run_wgs_sample.py yet")
         return None
 
@@ -399,9 +389,6 @@ def run_sample_qc(r1_path, r2_path, qc_dir, sample_name):
 
     # 2. Run fastp and use its returned dict
     os.makedirs(qc_dir, exist_ok=True)
-    # FIX: check return value of run_fastp (dict or None) instead of ignoring it
-    # run_fastp(r1_path, r2_path, qc_dir, sample_name=sample_name)
-    # return trim_r1, trim_r2, fastp_json
     fastp_res = run_fastp(r1_path, r2_path, qc_dir, sample_name=sample_name)
     if fastp_res is None:
         return None, None, None
@@ -433,34 +420,6 @@ def sample_qc_gate_status(fastp_json_path, sample_name):
     if res["status"] != "PASS":
         print(f"Error: Gate 1 {res['status']} for {sample_name} based on {fastp_json_path}")
     return res
-
-
-def is_sample_qc_gate_passed(fastp_json_path, sample_name):
-    """Evaluate Gate 1 quality metrics from fastp report.
-
-    Args:
-        fastp_json_path: Path to fastp json report.
-        sample_name: Name of sample.
-
-    Returns:
-        bool: True if PASS, False otherwise.
-    """
-    if not os.path.exists(fastp_json_path):
-        print(f"Error: {fastp_json_path} not found for Gate 1 QC check.")
-        return False
-
-    # FIX: check_qc_report returns bool directly; remove tuple/dict guessing
-    # is_pass = check_qc_report(fastp_json_path)
-    # if isinstance(is_pass, tuple):
-    #     is_pass = is_pass[0]
-    # elif isinstance(is_pass, dict):
-    #     is_pass = is_pass.get("pass", True)
-    is_pass = check_qc_report(fastp_json_path)
-
-    if not is_pass:
-        print(f"Error: Gate 1 FAIL for {sample_name} based on {fastp_json_path}")
-        return False
-    return True
 
 
 # FIX (MU9): rename a non-empty assembly directory left behind by an interrupted run so a fresh assembly starts clean instead of resuming broken SPAdes state
@@ -531,12 +490,6 @@ def run_sample_assembly(platform, assembly_dir, trim_r1_path, trim_r2_path, thre
 
     # 2. Run assembly and use returned path
     os.makedirs(assembly_dir, exist_ok=True)
-    # FIX: use return value of assemble_genome (str or None) directly
-    # assemble_genome(platform, assembly_dir, r1_path=trim_r1, r2_path=trim_r2, threads=threads)
-    # if not os.path.exists(assembly_fasta):
-    #     print(f"Error: Assembly failed, {assembly_fasta} not found.")
-    #     return None
-    # return assembly_fasta
     assembled_path = assemble_genome(
         platform,
         assembly_dir,
@@ -571,8 +524,8 @@ def sample_gate2_status(assembly_fasta_path, assembly_qc_dir, threads):
         return evaluate_assembly_quality(
             quast_tsv_path,
             busco_summaries[0],
-            min_n50=50000,               # Floor threshold against fragmented assembly
-            min_busco_completeness=95.0, # Gate 2 completeness threshold
+            min_n50=GATE2_MIN_N50,               # Floor threshold against fragmented assembly
+            min_busco_completeness=GATE2_MIN_BUSCO_COMPLETENESS, # Gate 2 completeness threshold
         )
 
     # 2. Run Gate 2 evaluation from scratch
@@ -580,47 +533,9 @@ def sample_gate2_status(assembly_fasta_path, assembly_qc_dir, threads):
     return run_assembly_qc_status(
         assembly_fasta_path,
         assembly_qc_dir,
-        lineage="bacillales_odb10",      # Default Bacillales lineage
-        min_n50=50000,                   # Floor threshold
-        min_busco_completeness=95.0,     # Gate 2 threshold
-        threads=threads,
-    )
-
-
-def is_sample_gate2_passed(assembly_fasta_path, assembly_qc_dir, threads):
-    """Run Gate 2 assembly evaluation (QUAST + BUSCO) or evaluate existing reports.
-
-    Args:
-        assembly_fasta_path: Path to assembly FASTA.
-        assembly_qc_dir: Output directory for assembly QC.
-        threads: Number of threads.
-
-    Returns:
-        bool: True if Gate 2 PASS, False otherwise.
-    """
-    quast_tsv_path = os.path.join(assembly_qc_dir, "report.tsv")
-    # FIX: match only .json BUSCO summaries as run_busco does, avoiding .txt files
-    # busco_summaries = glob.glob(os.path.join(assembly_qc_dir, "busco_result", "short_summary*"))
-    busco_summaries = glob.glob(os.path.join(assembly_qc_dir, "busco_result", "short_summary*.json"))
-
-    # 1. Reuse existing reports if available
-    if os.path.exists(quast_tsv_path) and busco_summaries:
-        print(f"Warning: {quast_tsv_path} exists, skipping QUAST and BUSCO run.")
-        return check_assembly_quality(
-            quast_tsv_path,
-            busco_summaries[0],
-            min_n50=50000,               # Floor threshold against fragmented assembly
-            min_busco_completeness=95.0, # Gate 2 completeness threshold
-        )
-
-    # 2. Run Gate 2 evaluation from scratch
-    os.makedirs(assembly_qc_dir, exist_ok=True)
-    return run_assembly_qc_gate(
-        assembly_fasta_path,
-        assembly_qc_dir,
-        lineage="bacillales_odb10",      # Default Bacillales lineage
-        min_n50=50000,                   # Floor threshold
-        min_busco_completeness=95.0,     # Gate 2 threshold
+        lineage=GATE2_BUSCO_LINEAGE,      # Default Bacillales lineage
+        min_n50=GATE2_MIN_N50,                   # Floor threshold
+        min_busco_completeness=GATE2_MIN_BUSCO_COMPLETENESS,     # Gate 2 threshold
         threads=threads,
     )
 
@@ -737,8 +652,8 @@ def check_sample_identity(assembly_fasta_path, ref_genome_path, identity_tsv_pat
         return {"status": "ERROR", "ani": None, "af_ref": None, "af_query": None}
 
     try:
-        with open(identity_tsv_path, "r") as f:
-            header = f.readline()
+        with open(identity_tsv_path) as f:
+            f.readline()
             lines = [line.strip().split("\t") for line in f if line.strip()]
     except OSError as e:
         print(f"IDENTITY: ERROR - skani failed to read {identity_tsv_path}: {e}")
@@ -753,9 +668,9 @@ def check_sample_identity(assembly_fasta_path, ref_genome_path, identity_tsv_pat
     af_query = float(lines[0][4])
 
     # 95% is the recognized species-level ANI threshold
-    if ani < 95.0:
+    if ani < IDENTITY_MIN_ANI:
         print(
-            f"IDENTITY: FAIL - ANI={ani:.2f}% < 95 with {ref_genome_path} "
+            f"IDENTITY: FAIL - ANI={ani:.2f}% < {IDENTITY_MIN_ANI} with {ref_genome_path} "
             f"(align_fraction ref/query={af_ref:.2f}%/{af_query:.2f}%)"
         )
         return {"status": "FAIL", "ani": ani, "af_ref": af_ref, "af_query": af_query}
@@ -786,18 +701,12 @@ def main(argv=None) -> int:
     parser.add_argument("-d", "--data_dir", required=True, help="Folder containing the raw reads of the sample (required)")
     parser.add_argument("-o", "--out_dir", default=str(paths.WGS_RESULTS),
                         help="Root for outputs; each step writes to <out_dir>/<sample>/<step>/ (default: results/wgs)")
-    # FIX: restrict platform choices to auto and short until long-read support is implemented
-    # parser.add_argument("-p", "--platform", default="auto", choices=["auto", "short", "long", "hybrid"], help="Sequencing platform (default: auto)")
     parser.add_argument("-p", "--platform", default="auto", choices=["auto", "short"], help="Sequencing platform (default: auto)")
     parser.add_argument("-t", "--threads", type=int, default=default_threads, help=f"CPU threads (default: {default_threads})")
     parser.add_argument("-r", "--ref_genome", default=None,
                         help=f"Reference genome FNA for identity check (default: FZB42, {paths.DEFAULT_IDENTITY_ACCESSION} in data/public/genomes)")
     parser.add_argument("-n", "--dry_run", action="store_true", help="Print steps and paths without running tools")
 
-    # FIX (W16): parse argv; a missing default reference is an ERROR before any work starts (was a traceback)
-    # args = parser.parse_args()
-    # if args.ref_genome is None:
-    #     args.ref_genome = str(paths.genome_fna(paths.DEFAULT_IDENTITY_ACCESSION))
     args = parser.parse_args(argv)
     if args.ref_genome is None:
         try:
@@ -809,16 +718,12 @@ def main(argv=None) -> int:
     # 1. Find raw reads
     r1_path, r2_path = get_sample_raw_reads(args.data_dir, args.sample)
     if not r1_path or not r2_path:
-        # FIX (W16): return 3 with STATUS: ERROR - reads instead of sys.exit(1)
-        # sys.exit(1)
         print(f"STATUS: ERROR - reads - raw paired-end reads not found for {args.sample} in {args.data_dir}")
         return 3
 
     # 2. Determine platform
     platform = determine_platform(args.platform, r1_path)
     if platform is None:
-        # FIX (W16): return 3 with STATUS: ERROR - reads instead of sys.exit(1)
-        # sys.exit(1)
         print(f"STATUS: ERROR - reads - could not determine valid short-read platform from {r1_path}")
         return 3
 
@@ -833,8 +738,6 @@ def main(argv=None) -> int:
     assembly_qc_dir = os.path.join(sample_root, "assembly_qc")
     contig_stats_tsv_path = os.path.join(assembly_dir, "contig_stats.tsv")
     identity_dir = os.path.join(sample_root, "identity")
-    # FIX: tie identity output filename to reference stem instead of hardcoded skani_vs_refs.tsv
-    # identity_tsv = os.path.join(identity_dir, "skani_vs_refs.tsv")
     ref_stem = os.path.splitext(os.path.basename(args.ref_genome))[0]
     identity_tsv_path = os.path.join(identity_dir, f"skani_vs_{ref_stem}.tsv")
 
@@ -846,12 +749,10 @@ def main(argv=None) -> int:
         print(f"[DRY-RUN] Step 1 (fastp QC): {trim_r1_path}, {trim_r2_path}, {fastp_json_path}")
         print(f"[DRY-RUN] Step 2 (Gate 1 QC check): {fastp_json_path}")
         print(f"[DRY-RUN] Step 3 (Assembly): {assembly_fasta_path} (platform: {platform}, threads: {args.threads})")
-        print(f"[DRY-RUN] Step 4 (Gate 2 QUAST+BUSCO): {assembly_qc_dir} (min_n50=50000, min_busco=95.0)")
+        print(f"[DRY-RUN] Step 4 (Gate 2 QUAST+BUSCO): {assembly_qc_dir} (min_n50={GATE2_MIN_N50}, min_busco={GATE2_MIN_BUSCO_COMPLETENESS})")
         print(f"[DRY-RUN] Step 5 (Contig stats): {contig_stats_tsv_path}")
         print(f"[DRY-RUN] Step 5b (Coverage): {fastp_json_path} vs {assembly_fasta_path} and {args.ref_genome}")
         print(f"[DRY-RUN] Step 6 (Identity check): {identity_tsv_path} vs {args.ref_genome}")
-        # FIX (W16): return 0 instead of sys.exit(0)
-        # sys.exit(0)
         return 0
 
     # FIX (W17): acquire per-sample lock before running any pipeline step; release in finally block
@@ -864,15 +765,10 @@ def main(argv=None) -> int:
         # 5. Step 1: QC fastp
         trim_r1_path, trim_r2_path, fastp_json_path = run_sample_qc(r1_path, r2_path, qc_dir, args.sample)
         if not trim_r1_path or not trim_r2_path or not fastp_json_path:
-            # FIX (W16): return 3 with STATUS: ERROR - fastp instead of sys.exit(1)
-            # sys.exit(1)
             print(f"STATUS: ERROR - fastp - fastp failed for {args.sample}")
             return 3
 
         # 6. Step 2: Gate 1 check
-        # FIX (W16): use sample_qc_gate_status to separate Gate 1 FAIL (exit 1) from ERROR (exit 3)
-        # if not is_sample_qc_gate_passed(fastp_json_path, args.sample):
-        #     sys.exit(1)
         gate1_res = sample_qc_gate_status(fastp_json_path, args.sample)
         if gate1_res["status"] == "FAIL":
             print(f"STATUS: FAIL - gate1 - {gate1_res['reason']}")
@@ -884,16 +780,10 @@ def main(argv=None) -> int:
         # 7. Step 3: De novo assembly
         assembly_fasta_path = run_sample_assembly(platform, assembly_dir, trim_r1_path, trim_r2_path, args.threads)
         if not assembly_fasta_path:
-            # FIX (W16): return 3 with STATUS: ERROR - assembly instead of sys.exit(1)
-            # sys.exit(1)
             print(f"STATUS: ERROR - assembly - de novo assembly failed for {args.sample}")
             return 3
 
         # 8. Step 4: Gate 2 assembly QC
-        # FIX (W16): use sample_gate2_status and replace legacy Gate 2 FAIL error line with STATUS: FAIL/ERROR - gate2
-        # if not is_sample_gate2_passed(assembly_fasta_path, assembly_qc_dir, args.threads):
-        #     print(f"Error: Gate 2 FAIL for {args.sample}: assembly quality below thresholds.")
-        #     sys.exit(1)
         gate2_res = sample_gate2_status(assembly_fasta_path, assembly_qc_dir, args.threads)
         if gate2_res["status"] == "FAIL":
             print(f"STATUS: FAIL - gate2 - {gate2_res['reason']}")
@@ -910,15 +800,12 @@ def main(argv=None) -> int:
 
         # 10. Step 6: Identity check
         identity_res = check_sample_identity(assembly_fasta_path, args.ref_genome, identity_tsv_path, args.threads)
-        # FIX (W16): map identity FAIL to exit 1 and ERROR to exit 3 with final STATUS line
-        # if identity_res["status"] != "PASS":
-        #     sys.exit(1)
         if identity_res["status"] == "FAIL":
             ani_val = identity_res.get("ani")
             reason = (
                 f"no ANI with {args.ref_genome}"
                 if ani_val is None
-                else f"ANI={ani_val:.2f}% < 95.0% with {args.ref_genome}"
+                else f"ANI={ani_val:.2f}% < {IDENTITY_MIN_ANI}% with {args.ref_genome}"
             )
             print(f"STATUS: FAIL - identity - {reason}")
             return 1

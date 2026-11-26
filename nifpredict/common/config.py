@@ -4,12 +4,12 @@ Description: Centralized Pydantic v2 Configuration Management for NifPredict.
              Supports environment variable overrides and path resolution.
 """
 
-from functools import lru_cache
 import os
+from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Union
-import yaml
+from typing import Literal
 
+import yaml
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -19,7 +19,7 @@ from nifpredict.common import paths
 PROJECT_ROOT = paths.REPO_ROOT
 
 # Ánh xạ chuẩn 2 chiều giữa Pfam Accession và Gene Symbol
-PFAM_TO_GENE_MAP: Dict[str, str] = {
+PFAM_TO_GENE_MAP: dict[str, str] = {
     "PF00142": "nifH",
     "PF00148": "nifD",
     "PF02826": "nifK",
@@ -31,7 +31,7 @@ PFAM_TO_GENE_MAP: Dict[str, str] = {
     "PF01802": "fixX",
 }
 
-GENE_TO_PFAM_MAP: Dict[str, str] = {v: k for k, v in PFAM_TO_GENE_MAP.items()}
+GENE_TO_PFAM_MAP: dict[str, str] = {v: k for k, v in PFAM_TO_GENE_MAP.items()}
 
 
 class ProjectConfig(BaseModel):
@@ -48,11 +48,11 @@ class ComputingConfig(BaseModel):
 
 
 class PathsConfig(BaseModel):
-    base_dir: Optional[Path] = Field(default_factory=lambda: PROJECT_ROOT)
-    raw: Dict[str, Path]
-    interim: Dict[str, Path]
-    processed: Dict[str, Path]
-    databases: Dict[str, Path]
+    base_dir: Path | None = Field(default_factory=lambda: PROJECT_ROOT)
+    raw: dict[str, Path]
+    interim: dict[str, Path]
+    processed: dict[str, Path]
+    databases: dict[str, Path]
     models: Path
     log_dir: Path
 
@@ -119,14 +119,14 @@ class SyntenyThresholds(BaseModel):
 
 
 class GeneSystem(BaseModel):
-    core_genes: List[str]
-    accessory_genes: List[str]
+    core_genes: list[str]
+    accessory_genes: list[str]
 
 
 class BiologicalThresholdsConfig(BaseModel):
     alignment: AlignmentThresholds
     synteny: SyntenyThresholds
-    gene_systems: Dict[str, GeneSystem]
+    gene_systems: dict[str, GeneSystem]
 
 
 class SplitStrategyConfig(BaseModel):
@@ -164,7 +164,7 @@ class NCBIConfig(BaseModel):
     rate_limit_per_sec: int = Field(gt=0)
 
     @property
-    def api_key(self) -> Optional[str]:
+    def api_key(self) -> str | None:
         return os.getenv(self.api_key_env_var)
 
 
@@ -206,14 +206,14 @@ class AppConfig(BaseModel):
 class EnvOverrides(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="NIFPREDICT_", env_file=".env", extra="ignore")
 
-    enable_gpu: Optional[bool] = None
-    max_threads: Optional[int] = None
-    log_level: Optional[str] = None
+    enable_gpu: bool | None = None
+    max_threads: int | None = None
+    log_level: str | None = None
 
 
 @lru_cache(maxsize=1)
 def load_config(
-    config_path: Optional[Union[str, Path]] = None,
+    config_path: str | Path | None = None,
     auto_create_dirs: bool = True,
 ) -> AppConfig:
     if config_path is None:
@@ -225,7 +225,7 @@ def load_config(
         raise FileNotFoundError(f"Không tìm thấy file cấu hình tại: {resolved_path}")
 
     try:
-        with open(resolved_path, "r", encoding="utf-8") as f:
+        with open(resolved_path, encoding="utf-8") as f:
             raw_data = yaml.safe_load(f)
     except Exception as exc:
         raise ValueError(f"Lỗi định dạng YAML tại {resolved_path}: {exc}") from exc

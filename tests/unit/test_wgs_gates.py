@@ -87,12 +87,6 @@ def test_check_qc_report_bad_input(tmp_path: Path) -> None:
     assert qc.check_qc_report(str(no_dup)) is False
 
 
-def test_is_sample_qc_gate_passed(tmp_path: Path) -> None:
-    ok = _write_fastp_json(tmp_path / "ok.fastp.json", q30=0.85, dup=0.01)
-    assert run_sample.is_sample_qc_gate_passed(str(ok), "T1") is True
-    assert run_sample.is_sample_qc_gate_passed(str(tmp_path / "none.json"), "T1") is False
-
-
 # --- Gate 2 -------------------------------------------------------------------------------
 
 @pytest.mark.parametrize(
@@ -122,24 +116,6 @@ def test_check_assembly_quality_bad_input(tmp_path: Path) -> None:
 def test_check_assembly_quality_reads_n50_not_n90(tmp_path: Path) -> None:
     quast, busco_json = _gate2_files(tmp_path, n50=60000, busco=98.0, n90=1000)
     assert qc.check_assembly_quality(quast, busco_json, **GATE2) is True
-
-
-@pytest.mark.parametrize("n50,expected", [(120000, True), (49999, False)])
-def test_is_sample_gate2_passed_reuses_reports(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, n50: int, expected: bool
-) -> None:
-    qc_dir = tmp_path / "assembly_qc"
-    (qc_dir / "busco_result").mkdir(parents=True)
-    _write_quast_tsv(qc_dir / "report.tsv", n50=n50)
-    _write_busco_json(qc_dir / "busco_result" / "short_summary.x.json", complete=97.5)
-
-    def _must_not_run(*args, **kwargs):
-        raise AssertionError("QUAST/BUSCO must not run when reports exist")
-
-    monkeypatch.setattr(run_sample, "run_assembly_qc_gate", _must_not_run)
-    asm = tmp_path / "assembly.fasta"
-    asm.write_text(">c1\nATGC\n")
-    assert run_sample.is_sample_gate2_passed(str(asm), str(qc_dir), 4) is expected
 
 
 # --- Identity -----------------------------------------------------------------------------
