@@ -11,7 +11,6 @@ from nifpredict.common.logger import setup_logger_from_config
 from nifpredict.ml.data import NCBIDownloader, NCBIExtractor
 from nifpredict.ml.features import ClusterFilter, GenomeFeatureExtractor, HMMAnnotator
 
-
 # NAME của model Pfam trong file .hmm -> gen nif tương ứng.
 # annotate_faa đặt gene_family bằng NAME (Fer4_NifH, Oxidored_nitro,
 # 2-Hacid_dh_C), không phải accession Pfam (PF00142/148/02826).
